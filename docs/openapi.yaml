@@ -1,0 +1,271 @@
+openapi: 3.0.3
+info:
+  title: ArtGateway API
+  version: 1.0.0
+  description: A RESTful API to browse, search, and manage artwork and museum collections with real-world art data.
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local Development Server
+
+paths:
+  /artworks:
+    get:
+      summary: Retrieve a list of artworks
+      description: Returns a list of artworks. Supports filtering by period, title, and creation year range.
+      parameters:
+        - in: query
+          name: period
+          required: false
+          description: Filter artworks by artistic period or movement
+          schema:
+            type: string
+          example: Impressionism
+        - in: query
+          name: title
+          required: false
+          description: Search artworks by title (case-insensitive substring match)
+          schema:
+            type: string
+          example: Starry Night
+        - in: query
+          name: year_min
+          required: false
+          description: Filter for artworks created in or after this year
+          schema:
+            type: integer
+          example: 1880
+        - in: query
+          name: year_max
+          required: false
+          description: Filter for artworks created in or before this year
+          schema:
+            type: integer
+          example: 1900
+      responses:
+        '200':
+          description: A list of artworks retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Artwork'
+            application/xml:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Artwork'
+            application/x-yaml:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Artwork'
+
+    post:
+      summary: Add a new artwork
+      description: Creates a new artwork record. Requires user authentication.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Artwork'
+      responses:
+        '201':
+          description: Artwork successfully created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Artwork'
+        '400':
+          description: Invalid input data
+        '401':
+          description: Unauthorized - Authentication required
+
+  /artworks/{id}:
+    get:
+      summary: Retrieve a specific artwork by ID
+      parameters:
+        - in: path
+          name: id
+          required: true
+          description: The unique identifier of the artwork
+          schema:
+            type: integer
+          example: 101
+      responses:
+        '200':
+          description: Artwork found and returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Artwork'
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/Artwork'
+            application/x-yaml:
+              schema:
+                $ref: '#/components/schemas/Artwork'
+        '404':
+          description: Artwork not found
+
+    put:
+      summary: Update an existing artwork
+      description: Replaces an existing artwork record by ID. Requires user authentication.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          description: The unique identifier of the artwork to update
+          schema:
+            type: integer
+          example: 101
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Artwork'
+      responses:
+        '200':
+          description: Artwork successfully updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Artwork'
+        '400':
+          description: Invalid input data
+        '401':
+          description: Unauthorized
+        '404':
+          description: Artwork not found
+
+    delete:
+      summary: Delete an artwork
+      description: Removes an artwork record by ID. Requires user authentication.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          description: The unique identifier of the artwork to delete
+          schema:
+            type: integer
+          example: 101
+      responses:
+        '204':
+          description: Artwork successfully deleted (No Content)
+        '401':
+          description: Unauthorized
+        '404':
+          description: Artwork not found
+
+components:
+  schemas:
+    Artwork:
+      type: object
+      required:
+        - title
+        - creationYear
+        - artistId
+      properties:
+        id:
+          type: integer
+          readOnly: true
+          example: 101
+        title:
+          type: string
+          example: "The Starry Night"
+        creationYear:
+          type: integer
+          example: 1889
+        medium:
+          type: string
+          example: "Oil on canvas"
+        period:
+          type: string
+          example: "Post-Impressionism"
+        dimensions:
+          type: string
+          example: "73.7 cm × 92.1 cm"
+        artistId:
+          type: integer
+          example: 102
+        museumId:
+          type: integer
+          example: 4
+        tags:
+          type: array
+          items:
+            type: string
+          example: ["night", "landscape", "swirls"]
+
+    Artist:
+      type: object
+      required:
+        - name
+      properties:
+        id:
+          type: integer
+          readOnly: true
+          example: 102
+        name:
+          type: string
+          example: "Vincent van Gogh"
+        birthYear:
+          type: integer
+          example: 1853
+        deathYear:
+          type: integer
+          example: 1890
+        nationality:
+          type: string
+          example: "Dutch"
+
+    Museum:
+      type: object
+      required:
+        - name
+        - city
+        - country
+      properties:
+        id:
+          type: integer
+          readOnly: true
+          example: 4
+        name:
+          type: string
+          example: "Museum of Modern Art"
+        city:
+          type: string
+          example: "New York"
+        country:
+          type: string
+          example: "United States"
+        website:
+          type: string
+          example: "https://www.moma.org"
+
+    Collection:
+      type: object
+      required:
+        - title
+        - description
+      properties:
+        id:
+          type: integer
+          readOnly: true
+          example: 10
+        title:
+          type: string
+          example: "Highlights of European Masterpieces"
+        description:
+          type: string
+          example: "A curated selection of notable European artworks across periods."
+        isPublic:
+          type: boolean
+          example: true
+        artworkIds:
+          type: array
+          items:
+            type: integer
+          example: [101, 102, 105]
