@@ -12,7 +12,12 @@
 
 ## Tech Stack
 
-* **Programming Language:** Java, PHP
+- PHP
+- SQLite
+- Composer (dependency management)
+- PHPUnit (testing)
+- Git & GitHub (version control)
+- Swagger Editor (OpenAPI validation)
 
 ## API Documentation
 
