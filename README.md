@@ -13,11 +13,11 @@
 ## Tech Stack
 
 - PHP
-- SQLite
 - Composer (dependency management)
-- PHPUnit (testing)
 - Git & GitHub (version control)
 - Swagger Editor (OpenAPI validation)
+- Nouto (Request testing)
+- Wampoon (Apache, MariaDB servers)
 
 ## API Documentation
 
