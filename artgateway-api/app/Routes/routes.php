@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Controllers\AboutController;
+use App\Controllers\ArtworkController;
 use App\Helpers\DateTimeHelper;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -14,6 +15,10 @@ return static function (Slim\App $app): void {
 
     //* ROUTE: GET /
     $app->get('/', [AboutController::class, 'handleAboutWebService']);
+
+    // ARTWORKS
+    $app->get('/artworks', [ArtworkController::class, 'handleGetArtworks']);
+    $app->get('/artworks/{id}', [ArtworkController::class, 'handleGetArtworkById']);
 
     //* NOTE: callback naming pattern: handle<ActionName>, e.g. handleGetPlayers
     //* ROUTE: GET /players
@@ -44,4 +49,6 @@ return static function (Slim\App $app): void {
         $response->getBody()->write($info);
         return $response->withHeader('Content-Type', 'text/html');
     });
+
+
 };
