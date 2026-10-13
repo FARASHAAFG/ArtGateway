@@ -16,17 +16,9 @@ class ArtworkModel extends BaseModel
 
     public function getAll(array $filters = []): array
     {
-        $sql = "SELECT
-                    id,
-                    title,
-                    creation_year AS creationYear,
-                    medium,
-                    period,
-                    dimensions,
-                    artist_id AS artistId,
-                    museum_id AS museumId,
-                    tags
-                FROM artworks";
+        $sql = "SELECT id, title, creationYear, medium, period, dimensions, artistId, museumId
+                FROM artworks
+                WHERE 1=1";
 
         $params = array();
 
@@ -41,12 +33,12 @@ class ArtworkModel extends BaseModel
         }
 
         if (!empty($filters['year_min'])) {
-            $sql = $sql . " AND creation_year >= :year_min";
+            $sql = $sql . " AND creationYear >= :year_min";
             $params['year_min'] = (int)$filters['year_min'];
         }
 
         if (!empty($filters['year_max'])) {
-            $sql = $sql . " AND creation_year <= :year_max";
+            $sql = $sql . " AND creationYear <= :year_max";
             $params['year_max'] = (int)$filters['year_max'];
         }
 
@@ -54,14 +46,10 @@ class ArtworkModel extends BaseModel
 
         $rows = $this->fetchAll($sql, $params);
 
-        // convert in to PHP array
+        //attach tags to each artwork
         $result = array();
         foreach ($rows as $row) {
-            if ($row['tags']) {
-                $row['tags'] = json_decode($row['tags'], true);
-            } else {
-                $row['tags'] = array();
-            }
+            $row['tags'] = $this->getTagsForArtwork($row['id']);
             $result[] = $row;
         }
         return $result;
@@ -70,29 +58,33 @@ class ArtworkModel extends BaseModel
     //Getting one artwork by ID
     public function getById(int $id)
     {
-        $sql = "SELECT
-                    id,
-                    title,
-                    creation_year AS creationYear,
-                    medium,
-                    period,
-                    dimensions,
-                    artist_id AS artistId,
-                    museum_id AS museumId,
-                    tags
+        $sql = "SELECT id, title, creationYear, medium, period, dimensions, artistId, museumId
                 FROM artworks
                 WHERE id = :id";
 
         $row = $this->fetchSingle($sql, array('id' => $id));
 
         if ($row) {
-            if ($row['tags']) {
-                $row['tags'] = json_decode($row['tags'], true);
-            } else {
-                $row['tags'] = array();
-            }
+            $row['tags'] = $this->getTagsForArtwork($row['id']);
         }
 
         return $row;
+    }
+
+    private function getTagsForArtwork(int $artworkId): array
+    {
+        $sql = "SELECT tags.name
+                FROM tags
+                JOIN artwork_tags ON artwork_tags.tagId = tags.id
+                WHERE artwork_tags.artworkId = :artworkId";
+
+        $rows = $this->fetchAll($sql, array('artworkId' => $artworkId));
+
+        $tagNames = array();
+        foreach ($rows as $row) {
+            $tagNames[] = $row['name'];
+        }
+
+        return $tagNames;
     }
 }
