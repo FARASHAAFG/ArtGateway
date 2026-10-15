@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 // Holds the path of the application's root directory.
 define('APP_BASE_PATH', dirname(__DIR__, 1));
+//var_dump(APP_BASE_PATH);
 // Holds the name of the app's root directory.
 // In Docker, this can be set via environment variable; otherwise, uses the folder name.
-define('APP_ROOT_DIR', $_ENV['APP_ROOT_DIR'] ?? basename(dirname(__FILE__, 2)));
-
+//define('APP_ROOT_DIR', $_ENV['APP_ROOT_DIR'] ?? basename(dirname(__FILE__, 2)));
+define('APP_ROOT_DIR', 'ArtGateway/artgateway-api');
+//var_dump(APP_ROOT_DIR);
 //* HTTP response status code.
 const HTTP_OK = 200;
 const HTTP_CREATED = 201;

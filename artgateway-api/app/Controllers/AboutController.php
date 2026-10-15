@@ -9,7 +9,7 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 
 class AboutController extends BaseController
 {
-    private const API_NAME = 'YOUR_PROJECT_NAME';
+    private const API_NAME = 'artgateway-api';
 
     private const API_VERSION = '1.0.0';
 
