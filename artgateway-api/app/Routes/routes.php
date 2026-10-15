@@ -23,14 +23,14 @@ return static function (Slim\App $app): void {
     $app->get('/artworks/{id}', [ArtworkController::class, 'handleGetArtworkById']);
 
     // ARTISTS
-    $app->get('/artists', [ArtworkController::class, 'handleGetArtists']);
-    $app->get('/artists/{id}', [ArtworkController::class, 'handleGetArtistById']);
-    $app->get('/artists/{id}/artworks', [ArtworkController::class, 'handleGetArtworksByArtist']);
+    $app->get('/artists', [ArtistController::class, 'handleGetArtists']);
+    $app->get('/artists/{id}', [ArtistController::class, 'handleGetArtistById']);
+    $app->get('/artists/{id}/artworks', [ArtistController::class, 'handleGetArtworksByArtist']);
 
     // MUSEUMS
-    $app->get('/museums', [ArtworkController::class, 'handleGetMuseums']);
-    $app->get('/museums/{id}', [ArtworkController::class, 'handleGetMuseumById']);
-    $app->get('/museums/{id}/artworks', [ArtworkController::class, 'handleGetArtworksByMuseumId']);
+    $app->get('/museums', [MuseumController::class, 'handleGetMuseums']);
+    $app->get('/museums/{id}', [MuseumController::class, 'handleGetMuseumById']);
+    $app->get('/museums/{id}/artworks', [MuseumController::class, 'handleGetArtworksByMuseum']);
 
     //* NOTE: callback naming pattern: handle<ActionName>, e.g. handleGetPlayers
     //* ROUTE: GET /players
