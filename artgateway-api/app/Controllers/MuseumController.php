@@ -7,6 +7,7 @@ namespace App\Controllers;
 use App\Domain\Models\MuseumModel;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
+use App\Exceptions\ApiException;
 
 class MuseumController extends BaseController
 {
@@ -29,7 +30,7 @@ class MuseumController extends BaseController
         $museum = $this->museumModel->getById($id);
 
         if (!$museum) {
-            return $this->renderJson($response, array('error' => 'Museum not found'), 404);
+            throw new ApiException(404, 'Museum not found');
         }
 
         return $this->renderJson($response, $museum);

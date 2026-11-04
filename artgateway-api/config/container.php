@@ -2,6 +2,9 @@
 
 declare(strict_types=1);
 
+use Monolog\Handler\RotatingFileHandler;
+use Monolog\Logger;
+use Psr\Log\LoggerInterface;
 use App\Helpers\Core\AppSettings;
 use App\Helpers\Core\PDOService;
 use Nyholm\Psr7\Factory\Psr17Factory;
@@ -39,6 +42,17 @@ $definitions = [
         $db_config = $container->get(AppSettings::class)->get('db');
         return new PDOService($db_config);
     },
+
+    // The logger: writes to var/logs/app-YYYY-MM-DD.log (one file per day, keeps the last 14).
+    LoggerInterface::class => function (ContainerInterface $container): LoggerInterface {
+        $logger_settings = $container->get(AppSettings::class)->get('logger');
+        $logger = new Logger('artgateway');
+        $logger->pushHandler(
+            new RotatingFileHandler($logger_settings['path'] . '/app.log', 14, $logger_settings['level'])
+        );
+        return $logger;
+    },
+
     // HTTP factories
     ResponseFactoryInterface::class => function (ContainerInterface $container) {
         return $container->get(Psr17Factory::class);

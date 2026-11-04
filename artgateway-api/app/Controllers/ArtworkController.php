@@ -7,6 +7,7 @@ namespace App\Controllers;
 use App\Domain\Models\ArtworkModel;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
+use App\Exceptions\ApiException;
 
 class ArtworkController extends BaseController
 {
@@ -32,7 +33,7 @@ class ArtworkController extends BaseController
         $artwork = $this->artworkModel->getById($id);
 
         if (!$artwork) {
-            return $this->renderJson($response, array('error' => 'Artwork not found'), 404);
+            throw new ApiException(404, 'Artwork not found');
         }
 
         return $this->renderJson($response, $artwork);
