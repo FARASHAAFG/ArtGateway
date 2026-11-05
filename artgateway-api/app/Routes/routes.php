@@ -9,6 +9,7 @@ use App\Controllers\MuseumController;
 use App\Helpers\DateTimeHelper;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
+use App\Controllers\ArtworkExternalController;
 
 
 return static function (Slim\App $app): void {
@@ -24,6 +25,9 @@ return static function (Slim\App $app): void {
     $app->post('/artworks', [ArtworkController::class, 'handleCreateArtwork']);
     $app->put('/artworks/{id}', [ArtworkController::class, 'handleUpdateArtwork']);
     $app->delete('/artworks/{id}', [ArtworkController::class, 'handleDeleteArtwork']);
+
+    // Composite resource: our artwork + info from the Art Institute of Chicago
+    $app->get('/artworks/{id}/external', [ArtworkExternalController::class, 'handleGetArtworkExternal']);
 
     // ARTISTS
     $app->get('/artists', [ArtistController::class, 'handleGetArtists']);
