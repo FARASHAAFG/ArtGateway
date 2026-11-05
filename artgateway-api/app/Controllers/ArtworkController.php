@@ -147,10 +147,7 @@ class ArtworkController extends BaseController
         );
 
         // Generate URL for a specific page
-        $makePageUrl = function (int $pageNumber) use (
-            $request,
-            $queryParams
-        ): string {
+        $makePageUrl = function (int $pageNumber) use ($request, $queryParams): string {
 
             $query = http_build_query(
                 array_merge(
@@ -195,7 +192,11 @@ class ArtworkController extends BaseController
             'links' => $links
         ];
 
-        return $this->renderJson($response, $result);
+        //return $this->renderJson($response, $result);
+
+        // this current line will render the response depedning on what the user wants
+        // e.g. if the Accept header is application/xml, itll display it with xml
+        return $this->renderResponse($request, $response, $result);
     }
 
     /**
@@ -218,6 +219,52 @@ class ArtworkController extends BaseController
         return $this->renderJson($response, $artwork);
     }*/
     /**
+     * Retrieve a single artwork by ID.
+     */
+    public function handleGetArtworkById(
+        Request $request,
+        Response $response,
+        array $args
+    ): Response {
+
+        // 1. VALIDATE THE ARTWORK ID
+        $validator = new RequestValidator($args);
+
+        $validator->integer('id', true, 1);
+
+        // Return validation errors if any exist
+        if ($validator->hasErrors()) {
+            return $this->renderJson(
+                $response,
+                [
+                    'error' => 'Validation failed.',
+                    'details' => $validator->getErrors()
+                ],
+                400
+            );
+        }
+
+        // 2. RETRIEVE THE VALIDATED ID
+        $validated = $validator->getValidated();
+
+        $id = $validated['id'];
+
+        // 3. RETRIEVE THE ARTWORK
+        $artwork = $this->artworkModel->getById($id);
+
+        // Return 404 if the artwork does not exist
+        if (!$artwork) {
+            return $this->renderJson(
+                $response,
+                ['error' => 'Artwork not found'],
+                404
+            );
+        }
+
+        // 4. RETURN THE ARTWORK
+
+        //return $this->renderJson($response, $artwork);
+        return $this->renderResponse($request, $response, $artwork);
  * Retrieve a single artwork by ID.
  */
 public function handleGetArtworkById(

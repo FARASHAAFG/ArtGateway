@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Middleware;
 
+use Nyholm\Psr7\Response;
+use App\Helpers\ContentNegotiator;
+//use Psr\Http\Message\ResponseInterface as Response;
 use App\Exceptions\ApiException;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -12,6 +15,51 @@ use Psr\Http\Server\RequestHandlerInterface as RequestHandler;
 
 class ContentNegotiationMiddleware implements MiddlewareInterface
 {
+    private ContentNegotiator $negotiator;
+
+    public function __construct()
+    {
+        $this->negotiator = new ContentNegotiator();
+    }
+
+    public function process(
+        Request $request,
+        RequestHandler $handler
+    ): Response {
+
+        // Determine which response format the client accepts.
+        $result = $this->negotiator->negotiate($request);
+
+        // If no supported format is acceptable, return 406.
+        if (!$result['success']) {
+
+            $response = new Response();
+
+            $error = [
+                'status' => 406,
+                'error' => 'Not Acceptable',
+                'message' => 'The requested response format is not supported.'
+            ];
+
+            $response->getBody()->write(
+                json_encode($error, JSON_PRETTY_PRINT)
+            );
+
+            return $response
+                ->withStatus(406)
+                ->withHeader('Content-Type', 'application/json');
+        }
+
+        // Store the selected format in the request.
+        $request = $request->withAttribute(
+            'response_format',
+            $result['format']
+        );
+
+        // Continue to the next middleware/controller.
+        return $handler->handle($request);
+    }
+  /*
     // Formats the API can send back
     private array $producible = ['application/json'];
 
@@ -23,7 +71,7 @@ class ContentNegotiationMiddleware implements MiddlewareInterface
         // ---- 1. Accept header (what the client wants back) ----
         $accept = strtolower($request->getHeaderLine('Accept'));
 
-        // No Accept header, or "*/*" means "anything is fine".
+        // No Accept header, or "**" means "anything is fine".
         if ($accept !== '' && !$this->acceptsAnyOf($accept)) {
             throw new ApiException(406, 'This API can only return: ' . implode(', ', $this->producible));
         }
@@ -58,10 +106,12 @@ class ContentNegotiationMiddleware implements MiddlewareInterface
     {
         foreach (explode(',', $accept) as $part) {
             $type = trim(explode(';', $part)[0]); // remove ";q=0.8"
-            if ($type === '*/*' || $type === 'application/*' || in_array($type, $this->producible, true)) {
+            if ($type === '*/
+  /*' || $type === 'application/*' || in_array($type, $this->producible, true)) {
                 return true;
             }
         }
         return false;
     }
+    */
 }

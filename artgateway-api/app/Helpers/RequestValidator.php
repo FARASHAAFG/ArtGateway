@@ -34,6 +34,7 @@ class RequestValidator
 
         if (!is_string($value)) {
             $this->errors[$field] = "$field must be a string.";
+            unset($this->validated[$field]);
             return $this;
         }
 
@@ -41,16 +42,19 @@ class RequestValidator
 
         if ($value === '') {
             $this->errors[$field] = "$field cannot be empty.";
+            unset($this->validated[$field]);
             return $this;
         }
 
-        if (strlen($value) > $maxLength) {
+        if (mb_strlen($value, 'UTF-8') > $maxLength) {
             $this->errors[$field] =
                 "$field cannot exceed $maxLength characters.";
 
+            unset($this->validated[$field]);
             return $this;
         }
 
+        unset($this->errors[$field]);
         $this->validated[$field] = $value;
 
         return $this;
@@ -79,6 +83,7 @@ class RequestValidator
             filter_var($value, FILTER_VALIDATE_INT) === false
         ) {
             $this->errors[$field] = "$field must be an integer.";
+            unset($this->validated[$field]);
             return $this;
         }
 
@@ -86,14 +91,17 @@ class RequestValidator
 
         if ($min !== null && $value < $min) {
             $this->errors[$field] = "$field must be at least $min.";
+            unset($this->validated[$field]);
             return $this;
         }
 
         if ($max !== null && $value > $max) {
             $this->errors[$field] = "$field cannot exceed $max.";
+            unset($this->validated[$field]);
             return $this;
         }
 
+        unset($this->errors[$field]);
         $this->validated[$field] = $value;
 
         return $this;
@@ -116,17 +124,26 @@ class RequestValidator
 
         $value = $this->input[$field];
 
-        if (
-            !is_string($value) ||
-            !in_array(strtolower($value), $allowed, true)
-        ) {
+        if (!is_string($value)) {
             $this->errors[$field] =
                 "$field must be one of: " . implode(', ', $allowed);
 
+            unset($this->validated[$field]);
             return $this;
         }
 
-        $this->validated[$field] = strtolower($value);
+        $value = strtolower(trim($value));
+
+        if (!in_array($value, $allowed, true)) {
+            $this->errors[$field] =
+                "$field must be one of: " . implode(', ', $allowed);
+
+            unset($this->validated[$field]);
+            return $this;
+        }
+
+        unset($this->errors[$field]);
+        $this->validated[$field] = $value;
 
         return $this;
     }
