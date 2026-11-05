@@ -66,6 +66,7 @@ use App\Middleware\RequestIdMiddleware;
 use Psr\Http\Message\ResponseFactoryInterface;
 use Psr\Log\LoggerInterface;
 use Slim\App;
+use App\Middleware\ResponseFormatMiddleware;
 
 return function (App $app) {
     $container = $app->getContainer();
@@ -106,5 +107,6 @@ return function (App $app) {
     );
 
     // Outermost middleware: assigns a request ID.
+    $app->add(new ResponseFormatMiddleware());
     $app->add(new RequestIdMiddleware($logger));
 };

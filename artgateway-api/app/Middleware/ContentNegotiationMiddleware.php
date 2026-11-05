@@ -4,10 +4,8 @@ declare(strict_types=1);
 
 namespace App\Middleware;
 
-use Nyholm\Psr7\Response;
-use App\Helpers\ContentNegotiator;
-//use Psr\Http\Message\ResponseInterface as Response;
 use App\Exceptions\ApiException;
+use App\Helpers\ContentNegotiator;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Psr\Http\Server\MiddlewareInterface;
@@ -15,6 +13,9 @@ use Psr\Http\Server\RequestHandlerInterface as RequestHandler;
 
 class ContentNegotiationMiddleware implements MiddlewareInterface
 {
+    // Formats the API accepts in a request body.
+    private array $consumable = ['application/json'];
+
     private ContentNegotiator $negotiator;
 
     public function __construct()
@@ -22,59 +23,17 @@ class ContentNegotiationMiddleware implements MiddlewareInterface
         $this->negotiator = new ContentNegotiator();
     }
 
-    public function process(
-        Request $request,
-        RequestHandler $handler
-    ): Response {
-
-        // Determine which response format the client accepts.
-        $result = $this->negotiator->negotiate($request);
-
-        // If no supported format is acceptable, return 406.
-        if (!$result['success']) {
-
-            $response = new Response();
-
-            $error = [
-                'status' => 406,
-                'error' => 'Not Acceptable',
-                'message' => 'The requested response format is not supported.'
-            ];
-
-            $response->getBody()->write(
-                json_encode($error, JSON_PRETTY_PRINT)
-            );
-
-            return $response
-                ->withStatus(406)
-                ->withHeader('Content-Type', 'application/json');
-        }
-
-        // Store the selected format in the request.
-        $request = $request->withAttribute(
-            'response_format',
-            $result['format']
-        );
-
-        // Continue to the next middleware/controller.
-        return $handler->handle($request);
-    }
-  /*
-    // Formats the API can send back
-    private array $producible = ['application/json'];
-
-    // Formats the API accepts in a request body.
-    private array $consumable = ['application/json'];
-
     public function process(Request $request, RequestHandler $handler): ResponseInterface
     {
         // ---- 1. Accept header (what the client wants back) ----
-        $accept = strtolower($request->getHeaderLine('Accept'));
+        $result = $this->negotiator->negotiate($request);
 
-        // No Accept header, or "**" means "anything is fine".
-        if ($accept !== '' && !$this->acceptsAnyOf($accept)) {
-            throw new ApiException(406, 'This API can only return: ' . implode(', ', $this->producible));
+        if (!$result['success']) {
+            throw new ApiException(406, 'This API can only return: application/json, application/xml, application/yaml');
         }
+
+        // Remember the chosen format for the rest of the request.
+        $request = $request->withAttribute('response_format', $result['format']);
 
         // ---- 2. Content-Type header (what the client sent) ----
         $method = $request->getMethod();
@@ -100,18 +59,4 @@ class ContentNegotiationMiddleware implements MiddlewareInterface
 
         return $handler->handle($request);
     }
-
-    // True if the Accept header lists something we can produce (or a wildcard).
-    private function acceptsAnyOf(string $accept): bool
-    {
-        foreach (explode(',', $accept) as $part) {
-            $type = trim(explode(';', $part)[0]); // remove ";q=0.8"
-            if ($type === '*/
-  /*' || $type === 'application/*' || in_array($type, $this->producible, true)) {
-                return true;
-            }
-        }
-        return false;
-    }
-    */
 }
