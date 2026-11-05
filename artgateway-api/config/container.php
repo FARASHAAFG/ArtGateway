@@ -16,6 +16,7 @@ use Psr\Http\Message\UriFactoryInterface;
 use Slim\Factory\AppFactory;
 use Slim\App;
 use Slim\Interfaces\RouteParserInterface;
+use App\Services\ArtInstituteClient;
 
 $definitions = [
     AppSettings::class => function () {
@@ -52,6 +53,11 @@ $definitions = [
         );
         return $logger;
     },
+    
+    ArtInstituteClient::class => function (ContainerInterface $container): ArtInstituteClient {
+        $settings = $container->get(AppSettings::class)->get('external');
+        return new ArtInstituteClient($settings['artic'], $container->get(LoggerInterface::class));
+    },    
 
     // HTTP factories
     ResponseFactoryInterface::class => function (ContainerInterface $container) {
