@@ -22,11 +22,14 @@ use Psr\Log\LoggerInterface;
  */
 class ArtInstituteClient
 {
-    // We never accept more than this many bytes from the museum (protects our memory).
+    // We never read more than this many bytes from the museum (protects our memory).
     private const MAX_RESPONSE_BYTES = 262144; // 256 KB
 
     // Only these fields are requested, and only these are ever used.
     private const FIELDS = 'id,title,artist_title,date_display,medium_display,place_of_origin,department_title,short_description,is_public_domain,image_id';
+
+    // Fields requested when searching for a person (artist). The museum calls them "agents".
+    private const AGENT_FIELDS = 'id,title,sort_title,alt_titles,birth_date,death_date,description,is_artist';
 
     private Client $http;
     private LoggerInterface $logger;
@@ -76,44 +79,115 @@ class ArtInstituteClient
             return ['status' => 'not_found'];
         }
 
+        $json = $this->search('artworks/search', [
+            'q' => trim($title . ' ' . $artistName),
+            'limit' => 5,               // we only need the best few matches
+            'fields' => self::FIELDS,   // only the fields we use
+        ], $requestId);
+
+        if ($json === null) {
+            return ['status' => 'unavailable'];
+        }
+
+        // The museum tells us the base address of its images.
+        $iiifUrl = $json['config']['iiif_url'] ?? '';
+
+        return $this->pickBestMatch($json['data'], $title, (string) $artistName, $iiifUrl);
+    }
+
+    /**
+     * Looks for the ARTIST (the museum calls people "agents") in the museum's records.
+     * Same return values as findArtwork().
+     */
+    public function findArtist(string $artistName, string $requestId = ''): array
+    {
+        $artistName = $this->cleanText($artistName, 100);
+
+        if ($artistName === null) {
+            return ['status' => 'not_found'];
+        }
+
+        $json = $this->search('agents/search', [
+            'q' => $artistName,
+            'limit' => 5,
+            'fields' => self::AGENT_FIELDS,
+        ], $requestId);
+
+        if ($json === null) {
+            return ['status' => 'unavailable'];
+        }
+
+        foreach ($json['data'] as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            // The museum also has organisations in this list. If it tells us
+            // this one is not an artist, skip it.
+            if (array_key_exists('is_artist', $item) && $item['is_artist'] === false) {
+                continue;
+            }
+
+            // The name must be very similar to ours (check the main name and other names).
+            $names = [(string) ($item['title'] ?? '')];
+            if (isset($item['alt_titles']) && is_array($item['alt_titles'])) {
+                foreach (array_slice($item['alt_titles'], 0, 10) as $alt) {
+                    $names[] = (string) $alt;
+                }
+            }
+
+            foreach ($names as $name) {
+                similar_text($this->normalize($artistName), $this->normalize($name), $percent);
+                if ($percent >= 85) {
+                    return ['status' => 'ok', 'data' => $this->buildArtistResult($item)];
+                }
+            }
+        }
+
+        return ['status' => 'not_found'];
+    }
+
+    /**
+     * Sends ONE request to the museum and checks the answer.
+     * Returns the decoded JSON (it always has a "data" list), or null when
+     * anything is wrong. Null means "unavailable"; the reason goes in the log.
+     */
+    private function search(string $path, array $query, string $requestId): ?array
+    {
         try {
-            $response = $this->http->request('GET', 'artworks/search', [
-                'query' => [
-                    'q' => trim($title . ' ' . $artistName),
-                    'limit' => 5,               // we only need the best few matches
-                    'fields' => self::FIELDS,   // only the fields we use
-                ],
-            ]);
+            $response = $this->http->request('GET', $path, ['query' => $query]);
 
             // ---- Check the answer before trusting it ----
             if ($response->getStatusCode() !== 200) {
-                return $this->unavailable($requestId, 'upstream status ' . $response->getStatusCode());
+                $this->logUnavailable($requestId, 'upstream status ' . $response->getStatusCode());
+                return null;
             }
 
             $contentType = strtolower($response->getHeaderLine('Content-Type'));
             if (!str_contains($contentType, 'json')) {
-                return $this->unavailable($requestId, 'upstream did not send JSON');
+                $this->logUnavailable($requestId, 'upstream did not send JSON');
+                return null;
             }
 
             // Second safety net: even if cURL let it through, refuse anything too big.
             $body = (string) $response->getBody();
             if (strlen($body) > self::MAX_RESPONSE_BYTES) {
-                return $this->unavailable($requestId, 'upstream response too large');
+                $this->logUnavailable($requestId, 'upstream response too large');
+                return null;
             }
 
             $json = json_decode($body, true, 10); // 10 = max nesting depth
             if (!is_array($json) || !isset($json['data']) || !is_array($json['data'])) {
-                return $this->unavailable($requestId, 'upstream sent unexpected JSON');
+                $this->logUnavailable($requestId, 'upstream sent unexpected JSON');
+                return null;
             }
 
-            // The museum tells us the base address of its images.
-            $iiifUrl = $json['config']['iiif_url'] ?? '';
-
-            return $this->pickBestMatch($json['data'], $title, (string) $artistName, $iiifUrl);
+            return $json;
 
         } catch (\Throwable $e) {
             // Timeouts, DNS errors, connection refused... all end up here.
-            return $this->unavailable($requestId, get_class($e) . ': ' . $e->getMessage());
+            $this->logUnavailable($requestId, get_class($e) . ': ' . $e->getMessage());
+            return null;
         }
     }
 
@@ -181,6 +255,34 @@ class ArtInstituteClient
         ];
     }
 
+    // Builds the small, clean object about the ARTIST that we send to OUR clients.
+    private function buildArtistResult(array $item): array
+    {
+        $id = isset($item['id']) ? (int) $item['id'] : 0;
+
+        return [
+            'source' => 'Art Institute of Chicago',
+            'sourceUrl' => $id > 0 ? 'https://www.artic.edu/artists/' . $id : null,
+            'attribution' => 'Data courtesy of the Art Institute of Chicago (CC0 1.0)',
+            'name' => $this->cleanText((string) ($item['title'] ?? ''), 150),
+            'birthYear' => $this->cleanYear($item['birth_date'] ?? null),
+            'deathYear' => $this->cleanYear($item['death_date'] ?? null),
+            'description' => $this->cleanText((string) ($item['description'] ?? ''), 1000),
+        ];
+    }
+
+    // A year must be a whole number between -3000 and 3000. Anything else becomes null.
+    private function cleanYear($value): ?int
+    {
+        if (is_int($value) || (is_string($value) && preg_match('/^-?\d{1,4}$/', $value))) {
+            $year = (int) $value;
+            if ($year >= -3000 && $year <= 3000) {
+                return $year;
+            }
+        }
+        return null;
+    }
+
     // Removes HTML tags, extra spaces and cuts the text to a maximum length.
     // Empty text becomes null.
     private function cleanText(string $text, int $maxLength): ?string
@@ -198,14 +300,13 @@ class ArtInstituteClient
         return trim(preg_replace('/[^a-z0-9 ]+/', '', strtolower($text)));
     }
 
-    // Writes the technical reason in the log (never sent to the client) and returns "unavailable".
-    private function unavailable(string $requestId, string $reason): array
+    // Writes the technical reason in the log (never sent to the client).
+    private function logUnavailable(string $requestId, string $reason): void
     {
         $this->logger->warning('external service unavailable', [
             'requestId' => $requestId,
             'service' => 'artic',
             'reason' => $reason,
         ]);
-        return ['status' => 'unavailable'];
     }
 }
