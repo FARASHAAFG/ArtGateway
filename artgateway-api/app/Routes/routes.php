@@ -10,6 +10,7 @@ use App\Helpers\DateTimeHelper;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Controllers\ArtworkExternalController;
+use App\Controllers\ArtistExternalController;
 
 
 return static function (Slim\App $app): void {
@@ -28,6 +29,8 @@ return static function (Slim\App $app): void {
 
     // Composite resource: our artwork + info from the Art Institute of Chicago
     $app->get('/artworks/{id}/external', [ArtworkExternalController::class, 'handleGetArtworkExternal']);
+    // Composite resource: our artist + our artworks + info from the Art Institute of Chicago
+       $app->get('/artists/{id}/external', [ArtistExternalController::class, 'handleGetArtistExternal']);
 
     // ARTISTS
     $app->get('/artists', [ArtistController::class, 'handleGetArtists']);
