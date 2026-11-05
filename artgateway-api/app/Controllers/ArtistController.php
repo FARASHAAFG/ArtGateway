@@ -7,6 +7,7 @@ namespace App\Controllers;
 use App\Domain\Models\ArtistModel;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
+use App\Exceptions\ApiException;
 
 class ArtistController extends BaseController
 {
@@ -30,7 +31,7 @@ class ArtistController extends BaseController
         $artist = $this->artistModel->getById($id);
 
         if (!$artist) {
-            return $this->renderJson($response, array('error' => 'Artist not found'), 404);
+            throw new ApiException(404, 'Artist not found');
         }
 
         return $this->renderJson($response, $artist);
