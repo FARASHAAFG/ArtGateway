@@ -40,4 +40,36 @@ class ArtistModel extends BaseModel
 
         return $this->fetchAll($sql, array('artistId' => $artistId));
     }
+
+    // Inserts a new artist and returns the new id.
+    // $data must contain ONLY the keys below (the controller builds it from a fixed list).
+    public function create(array $data): int
+    {
+        $newId = $this->insert('artists', array(
+            'name' => $data['name'],
+            'birthYear' => $data['birthYear'],
+            'deathYear' => $data['deathYear'],
+            'nationality' => $data['nationality'],
+        ));
+
+        return (int)$newId;
+    }
+
+    // Replaces all the fields of an existing artist.
+    public function updateById(int $id, array $data): void
+    {
+        // BaseModel's update(table, new values, where condition)
+        $this->update('artists', array(
+            'name' => $data['name'],
+            'birthYear' => $data['birthYear'],
+            'deathYear' => $data['deathYear'],
+            'nationality' => $data['nationality'],
+        ), array('id' => $id));
+    }
+
+    // Deletes one artist. Returns how many rows were deleted (1 or 0).
+    public function deleteById(int $id): int
+    {
+        return $this->delete('artists', array('id' => $id));
+    }
 }

@@ -21,7 +21,8 @@ class AboutController extends BaseController
             'version' => self::API_VERSION,
             'about' => 'Welcome! This i a Web service that provides this and that...',
             'authors' => 'FrostyBee',
-            'resources' => '/blah'
+            'resources' => '/blah',
+            'hi' => 'testingg'
         );
 
         return $this->renderJson($response, $data);

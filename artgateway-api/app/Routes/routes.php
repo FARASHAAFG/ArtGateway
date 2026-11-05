@@ -21,11 +21,17 @@ return static function (Slim\App $app): void {
     // ARTWORKS
     $app->get('/artworks', [ArtworkController::class, 'handleGetArtworks']);
     $app->get('/artworks/{id}', [ArtworkController::class, 'handleGetArtworkById']);
+    $app->post('/artworks', [ArtworkController::class, 'handleCreateArtwork']);
+    $app->put('/artworks/{id}', [ArtworkController::class, 'handleUpdateArtwork']);
+    $app->delete('/artworks/{id}', [ArtworkController::class, 'handleDeleteArtwork']);
 
     // ARTISTS
     $app->get('/artists', [ArtistController::class, 'handleGetArtists']);
     $app->get('/artists/{id}', [ArtistController::class, 'handleGetArtistById']);
     $app->get('/artists/{id}/artworks', [ArtistController::class, 'handleGetArtworksByArtist']);
+    $app->post('/artists', [ArtistController::class, 'handleCreateArtist']);
+    $app->put('/artists/{id}', [ArtistController::class, 'handleUpdateArtist']);
+    $app->delete('/artists/{id}', [ArtistController::class, 'handleDeleteArtist']);
 
     // MUSEUMS
     $app->get('/museums', [MuseumController::class, 'handleGetMuseums']);
