@@ -208,4 +208,41 @@ class ArtworkModel extends BaseModel
 
         return $tagNames;
     }
+
+    // Inserts a new artwork and returns the new id.
+    public function create(array $data): int
+    {
+        $newId = $this->insert('artworks', array(
+            'title' => $data['title'],
+            'creationYear' => $data['creationYear'],
+            'medium' => $data['medium'],
+            'period' => $data['period'],
+            'dimensions' => $data['dimensions'],
+            'artistId' => $data['artistId'],
+            'museumId' => $data['museumId'],
+        ));
+
+        return (int)$newId;
+    }
+
+    // Replaces all the fields of an existing artwork.
+    public function updateById(int $id, array $data): void
+    {
+        $this->update('artworks', array(
+            'title' => $data['title'],
+            'creationYear' => $data['creationYear'],
+            'medium' => $data['medium'],
+            'period' => $data['period'],
+            'dimensions' => $data['dimensions'],
+            'artistId' => $data['artistId'],
+            'museumId' => $data['museumId'],
+        ), array('id' => $id));
+    }
+
+    // Deletes one artwork. Its tag links and collection links are removed
+    // automatically by the database (ON DELETE CASCADE).
+    public function deleteById(int $id): int
+    {
+        return $this->delete('artworks', array('id' => $id));
+    }
 }

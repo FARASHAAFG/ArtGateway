@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Controllers;
 
+use App\Domain\Models\ArtistModel;
+use App\Domain\Models\MuseumModel;
 use App\Domain\Models\ArtworkModel;
 use App\Helpers\RequestValidator;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -13,10 +15,14 @@ use App\Exceptions\ApiException;
 class ArtworkController extends BaseController
 {
     private ArtworkModel $artworkModel;
+    private ArtistModel $artistModel;
+    private MuseumModel $museumModel;
 
-    public function __construct(ArtworkModel $artworkModel)
+    public function __construct(ArtworkModel $artworkModel, ArtistModel $artistModel, MuseumModel $museumModel)
     {
         $this->artworkModel = $artworkModel;
+        $this->artistModel = $artistModel;
+        $this->museumModel = $museumModel;
     }
 
     /**
@@ -257,4 +263,89 @@ public function handleGetArtworkById(
     // 4. RETURN THE ARTWORK
     return $this->renderJson($response, $artwork);
 }
+
+    // POST /artworks  ->  201 Created
+    public function handleCreateArtwork(Request $request, Response $response): Response
+    {
+        $body = $this->getJsonBody($request);
+        $data = $this->validateArtwork($body);
+
+        $newId = $this->artworkModel->create($data);
+        $artwork = $this->artworkModel->getById($newId);
+
+        $location = rtrim($request->getUri()->getPath(), '/') . '/' . $newId;
+
+        return $this->renderJson($response, $artwork, 201)->withHeader('Location', $location);
+    }
+
+    // PUT /artworks/{id}  ->  200 OK (replaces ALL the fields)
+    public function handleUpdateArtwork(Request $request, Response $response, array $args): Response
+    {
+        $id = (int)$args['id'];
+
+        if (!$this->artworkModel->getById($id)) {
+            throw new ApiException(404, 'Artwork not found');
+        }
+
+        $body = $this->getJsonBody($request);
+        $data = $this->validateArtwork($body);
+
+        $this->artworkModel->updateById($id, $data);
+
+        return $this->renderJson($response, $this->artworkModel->getById($id));
+    }
+
+    // DELETE /artworks/{id}  ->  204 No Content
+    public function handleDeleteArtwork(Request $request, Response $response, array $args): Response
+    {
+        $id = (int)$args['id'];
+
+        if (!$this->artworkModel->getById($id)) {
+            throw new ApiException(404, 'Artwork not found');
+        }
+
+        $this->artworkModel->deleteById($id);
+
+        return $response->withStatus(204);
+    }
+
+    /**
+     * Checks the body of a POST/PUT for an artwork.
+     * Returns a clean array with exactly the columns we store.
+     */
+    private function validateArtwork(array $body): array
+    {
+        $errors = array();
+        $thisYear = (int)date('Y');
+
+        $title = $this->checkString($body, 'title', true, 255, $errors);
+        $creationYear = $this->checkInt($body, 'creationYear', true, -3000, $thisYear, $errors);
+        $medium = $this->checkString($body, 'medium', false, 150, $errors);
+        $period = $this->checkString($body, 'period', false, 100, $errors);
+        $dimensions = $this->checkString($body, 'dimensions', false, 100, $errors);
+        $artistId = $this->checkInt($body, 'artistId', true, 1, 2147483647, $errors);
+        $museumId = $this->checkInt($body, 'museumId', false, 1, 2147483647, $errors);
+
+        // The artist (and museum, if given) must really exist.
+        // We only check when the id itself was valid, so we don't stack two errors on one field.
+        if ($artistId !== null && !$this->artistModel->getById($artistId)) {
+            $errors['artistId'] = 'No artist exists with this id';
+        }
+        if ($museumId !== null && !$this->museumModel->getById($museumId)) {
+            $errors['museumId'] = 'No museum exists with this id';
+        }
+
+        $this->throwIfInvalid($errors);
+
+        return array(
+            'title' => $title,
+            'creationYear' => $creationYear,
+            'medium' => $medium,
+            'period' => $period,
+            'dimensions' => $dimensions,
+            'artistId' => $artistId,
+            'museumId' => $museumId,
+        );
+    }
 }
+
