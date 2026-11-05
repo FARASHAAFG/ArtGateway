@@ -70,14 +70,7 @@ class ArtworkController extends BaseController
 
         // Return validation errors if any exist
         if ($validator->hasErrors()) {
-            return $this->renderJson(
-                $response,
-                [
-                    'error' => 'Validation failed.',
-                    'details' => $validator->getErrors()
-                ],
-                400
-            );
+            throw new ApiException(400, 'Validation failed', $validator->getErrors());
         }
         // 2. RETRIEVE VALIDATED PARAMETERS
 
@@ -107,13 +100,7 @@ class ArtworkController extends BaseController
             isset($filters['year_min'], $filters['year_max']) &&
             $filters['year_min'] > $filters['year_max']
         ) {
-            return $this->renderJson(
-                $response,
-                [
-                    'error' => 'Minimum year cannot exceed maximum year.'
-                ],
-                400
-            );
+            throw new ApiException(400, 'Validation failed', ['range' => 'Minimum year cannot exceed maximum year.']);
         }
 
         // Calculate pagination offset
@@ -234,14 +221,7 @@ class ArtworkController extends BaseController
 
         // Return validation errors if any exist
         if ($validator->hasErrors()) {
-            return $this->renderJson(
-                $response,
-                [
-                    'error' => 'Validation failed.',
-                    'details' => $validator->getErrors()
-                ],
-                400
-            );
+            throw new ApiException(400, 'Validation failed', $validator->getErrors());
         }
 
         // 2. RETRIEVE THE VALIDATED ID
@@ -254,11 +234,7 @@ class ArtworkController extends BaseController
 
         // Return 404 if the artwork does not exist
         if (!$artwork) {
-            return $this->renderJson(
-                $response,
-                ['error' => 'Artwork not found'],
-                404
-            );
+            throw new ApiException(404, 'Artwork not found');
         }
 
         // 4. RETURN THE ARTWORK

@@ -59,14 +59,7 @@ class ArtistController extends BaseController
 
         // Return validation errors if any exist
         if ($validator->hasErrors()) {
-            return $this->renderJson(
-                $response,
-                [
-                    'error' => 'Validation failed.',
-                    'details' => $validator->getErrors()
-                ],
-                400
-            );
+            throw new ApiException(400, 'Validation failed', $validator->getErrors());
         }
 
         // 2. RETRIEVE VALIDATED PARAMETERS
@@ -96,13 +89,7 @@ class ArtistController extends BaseController
             isset($filters['birthYear_min'], $filters['birthYear_max']) &&
             $filters['birthYear_min'] > $filters['birthYear_max']
         ) {
-            return $this->renderJson(
-                $response,
-                [
-                    'error' => 'Minimum birth year cannot exceed maximum birth year.'
-                ],
-                400
-            );
+            throw new ApiException(400, 'Validation failed', ['range' => 'Minimum birth year cannot exceed maximum birth year.']);
         }
 
         // 3. CALCULATE PAGINATION OFFSET

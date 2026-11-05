@@ -132,9 +132,18 @@ class RequestValidator
             return $this;
         }
 
-        $value = strtolower(trim($value));
+        // Compare case-insensitively, but keep the canonical spelling from $allowed
+        // (so "birthYear" is not lost by lowercasing).
+        $canonical = null;
+        foreach ($allowed as $option) {
+            if (strtolower($option) === strtolower(trim($value))) {
+                $canonical = $option;
+                break;
+            }
+        }
+        $value = $canonical ?? strtolower(trim($value));
 
-        if (!in_array($value, $allowed, true)) {
+        if ($canonical === null) {
             $this->errors[$field] =
                 "$field must be one of: " . implode(', ', $allowed);
 

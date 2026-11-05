@@ -16,15 +16,14 @@ class AboutController extends BaseController
     public function handleAboutWebService(Request $request, Response $response): Response
     {
 
-        $data = array(
+        $data = [
             'api' => self::API_NAME,
             'version' => self::API_VERSION,
-            'about' => 'Welcome! This i a Web service that provides this and that...',
-            'authors' => 'FrostyBee',
-            'resources' => '/blah',
-            'hi' => 'testingg'
-        );
+            'about' => 'REST API for artists, artworks and museums, with data enriched from the Art Institute of Chicago.',
+            'resources' => ['/artworks', '/artists', '/museums', '/artworks/{id}/external', '/artists/{id}/external'],
+            'formats' => ['application/json', 'application/xml', 'application/yaml'],
+        ];
 
-        return $this->renderJson($response, $data);
+        return $this->renderResponse($request, $response, $data);
     }
 }
