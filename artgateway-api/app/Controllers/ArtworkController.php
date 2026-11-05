@@ -265,9 +265,10 @@ class ArtworkController extends BaseController
 
         //return $this->renderJson($response, $artwork);
         return $this->renderResponse($request, $response, $artwork);
- * Retrieve a single artwork by ID.
+    }
+ /* Retrieve a single artwork by ID.
  */
-public function handleGetArtworkById(
+/*public function handleGetArtworkById(
     Request $request,
     Response $response,
     array $args
@@ -309,7 +310,7 @@ public function handleGetArtworkById(
 
     // 4. RETURN THE ARTWORK
     return $this->renderJson($response, $artwork);
-}
+}*/
 
     // POST /artworks  ->  201 Created
     public function handleCreateArtwork(Request $request, Response $response): Response
@@ -395,4 +396,3 @@ public function handleGetArtworkById(
         );
     }
 }
-

@@ -7,7 +7,7 @@ namespace App\Controllers;
 use App\Exceptions\ApiException;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Psr\Http\Message\ResponseInterface as Response;
-use Psr\Http\Message\ServerRequestInterface as Request;
+//use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Helpers\ResponseSerializer;
 
 abstract class BaseController
@@ -50,6 +50,7 @@ abstract class BaseController
                 'Content-Type',
                 $serialized['contentType']
             );
+    }
     /**
      * Returns the JSON body of the request as an array.
      * Throws 400 if there is no body or it is not a JSON object like {"name": "x"}.
