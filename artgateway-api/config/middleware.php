@@ -2,14 +2,17 @@
 
 declare(strict_types=1);
 
+use App\Middleware\ContentNegotiationMiddleware;
 use App\Middleware\HelloMiddleware;
 use Slim\App;
 
 return function (App $app) {
     //TODO: Add your middleware here.
-
+    
     $app->addBodyParsingMiddleware();
     $app->addRoutingMiddleware();
+
+    $app->add(new ContentNegotiationMiddleware());
 
     //!NOTE: the error handling middleware MUST be added last.
     $errorMiddleware = $app->addErrorMiddleware(true, true, true);

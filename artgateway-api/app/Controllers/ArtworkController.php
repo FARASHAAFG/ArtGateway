@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Controllers;
 
 use App\Domain\Models\ArtworkModel;
+use App\Helpers\RequestValidator;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
@@ -28,162 +29,70 @@ class ArtworkController extends BaseController
         // Get query parameters from the URL
         $params = $request->getQueryParams();
 
-        // -----------------------------------
-        // 1. PAGINATION PARAMETERS
-        // -----------------------------------
+        // 1. VALIDATE REQUEST PARAMETERS
+        $validator = new RequestValidator($params);
 
-        $page = $params['page'] ?? 1;
-        $limit = $params['limit'] ?? 20;
+        // Validate pagination
+        $validator->integer('page', false, 1, 1000);
+        $validator->integer('limit', false, 1, 100);
 
-        // Validate page
-        if (
-            (!is_string($page) && !is_int($page)) ||
-            filter_var($page, FILTER_VALIDATE_INT) === false ||
-            (int) $page < 1 ||
-            (int) $page > 1000000
-        ) {
+        // Validate sorting
+        // - user can only sort if the sort paramter is part of one of the four
+        //   available in the function second parameter
+        // - if none is specified, it goes with the id as the default
+        $validator->oneOf(
+            'sort',
+            ['id', 'title', 'year', 'period'],
+            'id'
+        );
+
+        // same here, only one of the 2 can b chosen
+        // with asc as the default
+        $validator->oneOf(
+            'order',
+            ['asc', 'desc'],
+            'asc'
+        );
+
+        // Validate filtering
+        $validator->string('period');
+        $validator->string('title', false, 255);
+
+        $validator->integer('year_min');
+        $validator->integer('year_max');
+
+        // Return validation errors if any exist
+        if ($validator->hasErrors()) {
             return $this->renderJson(
                 $response,
-                ['error' => 'Page must be a positive integer.'],
+                [
+                    'error' => 'Validation failed.',
+                    'details' => $validator->getErrors()
+                ],
                 400
             );
         }
+        // 2. RETRIEVE VALIDATED PARAMETERS
 
-        // Validate limit
-        if (
-            (!is_string($limit) && !is_int($limit)) ||
-            filter_var($limit, FILTER_VALIDATE_INT) === false ||
-            (int) $limit < 1 ||
-            (int) $limit > 100
-        ) {
-            return $this->renderJson(
-                $response,
-                ['error' => 'Limit must be between 1 and 100.'],
-                400
-            );
-        }
+        $validated = $validator->getValidated();
 
-        $page = (int) $page;
-        $limit = (int) $limit;
+        // Pagination defaults
+        $page = $validated['page'] ?? 1;
+        $limit = $validated['limit'] ?? 20;
 
-        // Calculate pagination offset
-        $offset = ($page - 1) * $limit;
+        // Sorting defaults
+        $sort = $validated['sort'];
+        $order = $validated['order'];
 
-
-        // -----------------------------------
-        // 2. SORTING PARAMETERS
-        // -----------------------------------
-
-        $sort = $params['sort'] ?? 'id';
-        $order = $params['order'] ?? 'asc';
-
-        $allowedSorts = [
-            'id',
-            'title',
-            'year',
-            'period'
-        ];
-
-        // Validate sorting column
-        if (
-            !is_string($sort) ||
-            !in_array($sort, $allowedSorts, true)
-        ) {
-            return $this->renderJson(
-                $response,
-                ['error' => 'Invalid sorting field.'],
-                400
-            );
-        }
-
-        // Validate sorting direction
-        if (
-            !is_string($order) ||
-            !in_array(strtolower($order), ['asc', 'desc'], true)
-        ) {
-            return $this->renderJson(
-                $response,
-                ['error' => 'Order must be asc or desc.'],
-                400
-            );
-        }
-
-        $order = strtolower($order);
-
-
-        // -----------------------------------
-        // 3. FILTERING PARAMETERS
-        // -----------------------------------
-
+        // Extract filters
         $filters = [];
 
-        // Filter by artistic period
-        if (isset($params['period'])) {
-
-            if (
-                !is_string($params['period']) ||
-                trim($params['period']) === ''
-            ) {
-                return $this->renderJson(
-                    $response,
-                    ['error' => 'Invalid period parameter.'],
-                    400
-                );
+        foreach (
+            ['period', 'title', 'year_min', 'year_max'] as $field
+        ) {
+            if (isset($validated[$field])) {
+                $filters[$field] = $validated[$field];
             }
-
-            $filters['period'] = trim($params['period']);
-        }
-
-        // Search artwork title
-        if (isset($params['title'])) {
-
-            if (
-                !is_string($params['title']) ||
-                trim($params['title']) === '' ||
-                strlen($params['title']) > 255
-            ) {
-                return $this->renderJson(
-                    $response,
-                    ['error' => 'Invalid title parameter.'],
-                    400
-                );
-            }
-
-            $filters['title'] = trim($params['title']);
-        }
-
-        // Minimum creation year
-        if (isset($params['year_min'])) {
-
-            if (
-               (!is_string($params['year_min']) && !is_int($params['year_min'])) ||
-                filter_var($params['year_min'], FILTER_VALIDATE_INT) === false
-            ) {
-                return $this->renderJson(
-                    $response,
-                    ['error' => 'Invalid minimum year.'],
-                    400
-                );
-            }
-
-            $filters['year_min'] = (int) $params['year_min'];
-        }
-
-        // Maximum creation year
-        if (isset($params['year_max'])) {
-
-            if (
-                (!is_string($params['year_max']) && !is_int($params['year_max'])) ||
-                filter_var($params['year_max'], FILTER_VALIDATE_INT) === false
-            ) {
-                return $this->renderJson(
-                    $response,
-                    ['error' => 'Invalid maximum year.'],
-                    400
-                );
-            }
-
-            $filters['year_max'] = (int) $params['year_max'];
         }
 
         // Validate year range
@@ -193,23 +102,24 @@ class ArtworkController extends BaseController
         ) {
             return $this->renderJson(
                 $response,
-                ['error' => 'Minimum year cannot exceed maximum year.'],
+                [
+                    'error' => 'Minimum year cannot exceed maximum year.'
+                ],
                 400
             );
         }
 
+        // Calculate pagination offset
+        $offset = ($page - 1) * $limit;
 
-        // -----------------------------------
-        // 4. RETRIEVE ARTWORKS
-        // -----------------------------------
-
-        // Count matching artworks
+        // 3. RETRIEVE ARTWORKS
+        // Count all matching artworks
         $total = $this->artworkModel->countAll($filters);
 
         // Calculate total number of pages
         $totalPages = (int) ceil($total / $limit);
 
-        // Retrieve matching artworks
+        // Retrieve artworks for the current page
         $artworks = $this->artworkModel->getAll(
             $filters,
             $sort,
@@ -218,10 +128,7 @@ class ArtworkController extends BaseController
             $offset
         );
 
-
-        // -----------------------------------
-        // 5. GENERATE PAGINATION LINKS
-        // -----------------------------------
+        // 4. GENERATE PAGINATION LINKS
 
         $queryParams = array_merge(
             $filters,
@@ -233,10 +140,7 @@ class ArtworkController extends BaseController
         );
 
         // Generate URL for a specific page
-        $makePageUrl = function (int $pageNumber) use (
-            $request,
-            $queryParams
-        ): string {
+        $makePageUrl = function (int $pageNumber) use ($request, $queryParams): string {
 
             $query = http_build_query(
                 array_merge(
@@ -267,16 +171,9 @@ class ArtworkController extends BaseController
                 : null
         ];
 
-
-        // -----------------------------------
-        // 6. RETURN JSON RESPONSE
-        // -----------------------------------
-
+        // 5. RETURN JSON RESPONSE
         $result = [
-            'debug' => 'pagination-controller-v2',
             'data' => $artworks,
-
-            
 
             'pagination' => [
                 'current_page' => $page,
@@ -288,14 +185,17 @@ class ArtworkController extends BaseController
             'links' => $links
         ];
 
-        return $this->renderJson($response, $result);
-    }
+        //return $this->renderJson($response, $result);
 
+        // this current line will render the response depedning on what the user wants
+        // e.g. if the Accept header is application/xml, itll display it with xml
+        return $this->renderResponse($request, $response, $result);
+    }
 
     /**
      * Retrieve a single artwork by ID.
      */
-    public function handleGetArtworkById(
+    /*public function handleGetArtworkById(
         Request $request,
         Response $response,
         array $args
@@ -314,5 +214,53 @@ class ArtworkController extends BaseController
         }
 
         return $this->renderJson($response, $artwork);
+    }*/
+    /**
+     * Retrieve a single artwork by ID.
+     */
+    public function handleGetArtworkById(
+        Request $request,
+        Response $response,
+        array $args
+    ): Response {
+
+        // 1. VALIDATE THE ARTWORK ID
+        $validator = new RequestValidator($args);
+
+        $validator->integer('id', true, 1);
+
+        // Return validation errors if any exist
+        if ($validator->hasErrors()) {
+            return $this->renderJson(
+                $response,
+                [
+                    'error' => 'Validation failed.',
+                    'details' => $validator->getErrors()
+                ],
+                400
+            );
+        }
+
+        // 2. RETRIEVE THE VALIDATED ID
+        $validated = $validator->getValidated();
+
+        $id = $validated['id'];
+
+        // 3. RETRIEVE THE ARTWORK
+        $artwork = $this->artworkModel->getById($id);
+
+        // Return 404 if the artwork does not exist
+        if (!$artwork) {
+            return $this->renderJson(
+                $response,
+                ['error' => 'Artwork not found'],
+                404
+            );
+        }
+
+        // 4. RETURN THE ARTWORK
+
+        //return $this->renderJson($response, $artwork);
+        return $this->renderResponse($request, $response, $artwork);
     }
 }
