@@ -1,271 +1,889 @@
 openapi: 3.0.3
 info:
   title: ArtGateway API
-  version: 1.0.0
-  description: A RESTful API to browse, search, and manage artwork and museum collections with real-world art data.
+  version: 2.0.0
+  description: |
+    REST API for art data: artists, artworks and museums, plus "composite" endpoints that
+    enrich our own data with information from the Art Institute of Chicago public API.
+
+    ## Media types
+    **Responses** can be returned as `application/json` (default), `application/xml` or
+    `application/yaml`. Choose with the `Accept` header. If none of the
+    three is acceptable the API answers `406`. Errors are returned in the same format as
+    successful responses (when the format cannot be determined, as with a 406, JSON is used).
+
+    **Request bodies** (POST/PUT) must be `application/json`. XML/YAML request bodies are
+    planned for Build 3 and currently answer `415`.
+
+    In XML, the root element is `<response>`, list items are wrapped in `<item>` and `null`
+    becomes an empty tag. Examples in this document are shown in JSON.
+
+    ## Errors
+    Every error uses the same body: `status`, `error`, `message`, optional `details`
+    (field name -> problem) and `requestId`. The same id is sent in the `X-Request-Id`
+    response header and written to the server log, so a problem can be traced.
+    500 errors never expose internal details. Using a method a route does not support gives
+    `405` (with an `Allow` header) and an unknown URL gives `404`.
+
+    ## Not implemented yet (planned for Build 3)
+    Authentication/authorization (all endpoints are open for now), XML/YAML request bodies,
+    writing `tags` on artworks (tags are read-only), collections and users endpoints,
+    museum create/update/delete, pagination on `/artists/{id}/artworks`, `/museums` and
+    `/museums/{id}/artworks`, and the PHP/JavaScript consumers of the composite endpoints.
+  contact:
+    name: ArtGateway team
 servers:
-  - url: http://localhost:8080/api/v1
-    description: Local Development Server
+  - url: http://localhost/ArtGateway/artgateway-api
+    description: Local development (Wampoon / XAMPP)
+tags:
+  - name: Artworks
+  - name: Artists
+  - name: Museums
+  - name: Composite
+    description: Our data combined with the Art Institute of Chicago API
+  - name: General
 
 paths:
+  /:
+    get:
+      tags: [General]
+      summary: API information
+      operationId: getApiInfo
+      responses:
+        '200':
+          description: Basic information about the API.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ApiInfo'}
+              example:
+                api: artgateway-api
+                version: 2.0.0
+                about: REST API for artists, artworks and museums, with data enriched from the Art Institute of Chicago.
+                resources: [/artworks, /artists, /museums, '/artworks/{id}/external', '/artists/{id}/external']
+                formats: [application/json, application/xml, application/yaml]
+            application/xml:
+              schema: {$ref: '#/components/schemas/ApiInfo'}
+            application/yaml:
+              schema: {$ref: '#/components/schemas/ApiInfo'}
+        '406': {$ref: '#/components/responses/NotAcceptable'}
+
   /artworks:
     get:
-      summary: Retrieve a list of artworks
-      description: Returns a list of artworks. Supports filtering by period, title, and creation year range.
+      tags: [Artworks]
+      summary: List artworks (paginated, filterable, sortable)
+      operationId: listArtworks
       parameters:
-        - in: query
-          name: period
-          required: false
-          description: Filter artworks by artistic period or movement
-          schema:
-            type: string
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/Limit'}
+        - name: sort
+          in: query
+          description: Field to sort by.
+          schema: {type: string, enum: [id, title, year, period], default: id}
+        - {$ref: '#/components/parameters/Order'}
+        - name: period
+          in: query
+          description: Filter by period.
+          schema: {type: string}
           example: Impressionism
-        - in: query
-          name: title
-          required: false
-          description: Search artworks by title (case-insensitive substring match)
-          schema:
-            type: string
-          example: Starry Night
-        - in: query
-          name: year_min
-          required: false
-          description: Filter for artworks created in or after this year
-          schema:
-            type: integer
-          example: 1880
-        - in: query
-          name: year_max
-          required: false
-          description: Filter for artworks created in or before this year
-          schema:
-            type: integer
+        - name: title
+          in: query
+          description: Filter by title (case-insensitive, partial match, max 255 characters).
+          schema: {type: string, maxLength: 255}
+          example: poppies
+        - name: year_min
+          in: query
+          description: Only artworks created in or after this year. Cannot exceed `year_max`.
+          schema: {type: integer}
+          example: 1800
+        - name: year_max
+          in: query
+          description: Only artworks created in or before this year.
+          schema: {type: integer}
           example: 1900
       responses:
         '200':
-          description: A list of artworks retrieved successfully
+          description: A page of artworks.
           content:
             application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Artwork'
+              schema: {$ref: '#/components/schemas/ArtworkPage'}
+              example:
+                data:
+                  - id: 1
+                    title: Poppies
+                    creationYear: 1873
+                    medium: Oil on canvas
+                    period: Impressionism
+                    dimensions: null
+                    artistId: 1
+                    museumId: 1
+                    tags: [landscape, flowers]
+                pagination: {current_page: 1, per_page: 2, total_items: 3, total_pages: 2}
+                links:
+                  first: http://localhost/ArtGateway/artgateway-api/artworks?sort=id&order=asc&limit=2&page=1
+                  prev: null
+                  next: http://localhost/ArtGateway/artgateway-api/artworks?sort=id&order=asc&limit=2&page=2
+                  last: http://localhost/ArtGateway/artgateway-api/artworks?sort=id&order=asc&limit=2&page=2
             application/xml:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Artwork'
-            application/x-yaml:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Artwork'
-
+              schema: {$ref: '#/components/schemas/ArtworkPage'}
+            application/yaml:
+              schema: {$ref: '#/components/schemas/ArtworkPage'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '406': {$ref: '#/components/responses/NotAcceptable'}
+        '500': {$ref: '#/components/responses/ServerError'}
     post:
-      summary: Add a new artwork
-      description: Creates a new artwork record. Requires user authentication.
+      tags: [Artworks]
+      summary: Create an artwork
+      operationId: createArtwork
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              $ref: '#/components/schemas/Artwork'
+            schema: {$ref: '#/components/schemas/ArtworkInput'}
+            example:
+              title: Apples
+              creationYear: 1895
+              medium: Oil on canvas
+              period: Post-Impressionism
+              dimensions: 68 x 92 cm
+              artistId: 3
+              museumId: 1
       responses:
         '201':
-          description: Artwork successfully created
+          description: Created. The `Location` header points to the new artwork.
+          headers:
+            Location: {$ref: '#/components/headers/Location'}
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/Artwork'
-        '400':
-          description: Invalid input data
-        '401':
-          description: Unauthorized - Authentication required
+              schema: {$ref: '#/components/schemas/Artwork'}
+              example:
+                id: 4
+                title: Apples
+                creationYear: 1895
+                medium: Oil on canvas
+                period: Post-Impressionism
+                dimensions: 68 x 92 cm
+                artistId: 3
+                museumId: 1
+                tags: []
+            application/xml:
+              schema: {$ref: '#/components/schemas/Artwork'}
+            application/yaml:
+              schema: {$ref: '#/components/schemas/Artwork'}
+        '400': {$ref: '#/components/responses/MalformedJson'}
+        '406': {$ref: '#/components/responses/NotAcceptable'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '500': {$ref: '#/components/responses/ServerError'}
 
   /artworks/{id}:
+    parameters:
+      - {$ref: '#/components/parameters/Id'}
     get:
-      summary: Retrieve a specific artwork by ID
-      parameters:
-        - in: path
-          name: id
-          required: true
-          description: The unique identifier of the artwork
-          schema:
-            type: integer
-          example: 101
+      tags: [Artworks]
+      summary: Get one artwork
+      operationId: getArtwork
       responses:
         '200':
-          description: Artwork found and returned
+          description: The artwork.
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/Artwork'
+              schema: {$ref: '#/components/schemas/Artwork'}
+              example:
+                id: 1
+                title: Poppies
+                creationYear: 1873
+                medium: Oil on canvas
+                period: Impressionism
+                dimensions: null
+                artistId: 1
+                museumId: 1
+                tags: [landscape, flowers]
             application/xml:
-              schema:
-                $ref: '#/components/schemas/Artwork'
-            application/x-yaml:
-              schema:
-                $ref: '#/components/schemas/Artwork'
-        '404':
-          description: Artwork not found
-
+              schema: {$ref: '#/components/schemas/Artwork'}
+            application/yaml:
+              schema: {$ref: '#/components/schemas/Artwork'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '406': {$ref: '#/components/responses/NotAcceptable'}
+        '500': {$ref: '#/components/responses/ServerError'}
     put:
-      summary: Update an existing artwork
-      description: Replaces an existing artwork record by ID. Requires user authentication.
-      parameters:
-        - in: path
-          name: id
-          required: true
-          description: The unique identifier of the artwork to update
-          schema:
-            type: integer
-          example: 101
+      tags: [Artworks]
+      summary: Replace an artwork
+      description: |
+        Full replacement: every field is overwritten, so optional fields left out of the body
+        become `null`. `tags` cannot be changed yet.
+      operationId: updateArtwork
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              $ref: '#/components/schemas/Artwork'
+            schema: {$ref: '#/components/schemas/ArtworkInput'}
+            example:
+              title: Apples and Oranges
+              creationYear: 1899
+              artistId: 3
+              museumId: 1
       responses:
         '200':
-          description: Artwork successfully updated
+          description: The updated artwork.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Artwork'}
+            application/xml:
+              schema: {$ref: '#/components/schemas/Artwork'}
+            application/yaml:
+              schema: {$ref: '#/components/schemas/Artwork'}
+        '400': {$ref: '#/components/responses/MalformedJson'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '406': {$ref: '#/components/responses/NotAcceptable'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '500': {$ref: '#/components/responses/ServerError'}
+    delete:
+      tags: [Artworks]
+      summary: Delete an artwork
+      operationId: deleteArtwork
+      responses:
+        '204': {description: Deleted. No body.}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '406': {$ref: '#/components/responses/NotAcceptable'}
+        '500': {$ref: '#/components/responses/ServerError'}
+
+  /artworks/{id}/external:
+    parameters:
+      - {$ref: '#/components/parameters/Id'}
+    get:
+      tags: [Composite]
+      summary: An artwork plus matching data from the Art Institute of Chicago
+      description: |
+        Returns our artwork and, when found, the best match from the Art Institute of Chicago
+        (title and artist matching; at most 5 candidates examined). The museum is optional:
+        if it is down, slow or has no match, this endpoint still answers `200` with
+        `external: null` and an `externalStatus` explaining why. `imageUrl` is only
+        provided for public-domain works.
+
+        | externalStatus | meaning |
+        |---|---|
+        | `ok` | a match was found; `external` is filled |
+        | `not_found` | the museum answered but has no match |
+        | `unavailable` | the museum could not be reached (timeout, error, rate limit) |
+      operationId: getArtworkWithExternal
+      responses:
+        '200':
+          description: The artwork with its external data.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ArtworkComposite'}
+              examples:
+                ok:
+                  summary: Match found
+                  value:
+                    artwork:
+                      id: 1
+                      title: Poppies
+                      creationYear: 1873
+                      medium: Oil on canvas
+                      period: Impressionism
+                      dimensions: null
+                      artistId: 1
+                      museumId: 1
+                      tags: [landscape, flowers]
+                    external:
+                      source: Art Institute of Chicago
+                      sourceUrl: https://www.artic.edu/artworks/16568
+                      attribution: Data courtesy of the Art Institute of Chicago (CC0 1.0)
+                      title: Poppies
+                      artist: Claude Monet
+                      dateDisplay: 1873 (approx)
+                      medium: Oil on canvas
+                      placeOfOrigin: France
+                      department: Painting and Sculpture of Europe
+                      description: A field of poppies.
+                      isPublicDomain: true
+                      imageUrl: https://www.artic.edu/iiif/2/e2da9a9e-0000-4000-8000-123456789abc/full/843,/0/default.jpg
+                    externalStatus: ok
+                notFound:
+                  summary: No match at the museum
+                  value:
+                    artwork: {id: 3, title: The Bedroom, creationYear: 1888, medium: Oil on canvas, period: Post-Impressionism, dimensions: null, artistId: 2, museumId: 2, tags: []}
+                    external: null
+                    externalStatus: not_found
+                unavailable:
+                  summary: Museum unreachable
+                  value:
+                    artwork: {id: 1, title: Poppies, creationYear: 1873, medium: Oil on canvas, period: Impressionism, dimensions: null, artistId: 1, museumId: 1, tags: [landscape, flowers]}
+                    external: null
+                    externalStatus: unavailable
+            application/xml:
+              schema: {$ref: '#/components/schemas/ArtworkComposite'}
+            application/yaml:
+              schema: {$ref: '#/components/schemas/ArtworkComposite'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '406': {$ref: '#/components/responses/NotAcceptable'}
+        '500': {$ref: '#/components/responses/ServerError'}
+
+  /artists:
+    get:
+      tags: [Artists]
+      summary: List artists (paginated, filterable, sortable)
+      operationId: listArtists
+      parameters:
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/Limit'}
+        - name: sort
+          in: query
+          schema: {type: string, enum: [id, name, birthYear, deathYear, nationality], default: id}
+        - {$ref: '#/components/parameters/Order'}
+        - name: name
+          in: query
+          description: Filter by name (partial match, max 150 characters).
+          schema: {type: string, maxLength: 150}
+          example: monet
+        - name: nationality
+          in: query
+          description: Filter by nationality (max 100 characters).
+          schema: {type: string, maxLength: 100}
+          example: French
+        - name: birthYear_min
+          in: query
+          schema: {type: integer}
+          example: 1800
+        - name: birthYear_max
+          in: query
+          description: Cannot be lower than `birthYear_min`.
+          schema: {type: integer}
+          example: 1900
+      responses:
+        '200':
+          description: A page of artists.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ArtistPage'}
+              example:
+                data:
+                  - {id: 1, name: Claude Monet, birthYear: 1840, deathYear: 1926, nationality: French}
+                pagination: {current_page: 1, per_page: 1, total_items: 2, total_pages: 2}
+                links:
+                  first: http://localhost/ArtGateway/artgateway-api/artists?sort=id&order=asc&limit=1&page=1
+                  prev: null
+                  next: http://localhost/ArtGateway/artgateway-api/artists?sort=id&order=asc&limit=1&page=2
+                  last: http://localhost/ArtGateway/artgateway-api/artists?sort=id&order=asc&limit=1&page=2
+            application/xml:
+              schema: {$ref: '#/components/schemas/ArtistPage'}
+            application/yaml:
+              schema: {$ref: '#/components/schemas/ArtistPage'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '406': {$ref: '#/components/responses/NotAcceptable'}
+        '500': {$ref: '#/components/responses/ServerError'}
+    post:
+      tags: [Artists]
+      summary: Create an artist
+      operationId: createArtist
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ArtistInput'}
+            example: {name: Paul Cezanne, birthYear: 1839, deathYear: 1906, nationality: French}
+      responses:
+        '201':
+          description: Created. The `Location` header points to the new artist.
+          headers:
+            Location: {$ref: '#/components/headers/Location'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Artist'}
+              example: {id: 3, name: Paul Cezanne, birthYear: 1839, deathYear: 1906, nationality: French}
+            application/xml:
+              schema: {$ref: '#/components/schemas/Artist'}
+            application/yaml:
+              schema: {$ref: '#/components/schemas/Artist'}
+        '400': {$ref: '#/components/responses/MalformedJson'}
+        '406': {$ref: '#/components/responses/NotAcceptable'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '500': {$ref: '#/components/responses/ServerError'}
+
+  /artists/{id}:
+    parameters:
+      - {$ref: '#/components/parameters/Id'}
+    get:
+      tags: [Artists]
+      summary: Get one artist
+      operationId: getArtist
+      responses:
+        '200':
+          description: The artist.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Artist'}
+              example: {id: 1, name: Claude Monet, birthYear: 1840, deathYear: 1926, nationality: French}
+            application/xml:
+              schema: {$ref: '#/components/schemas/Artist'}
+            application/yaml:
+              schema: {$ref: '#/components/schemas/Artist'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '406': {$ref: '#/components/responses/NotAcceptable'}
+        '500': {$ref: '#/components/responses/ServerError'}
+    put:
+      tags: [Artists]
+      summary: Replace an artist
+      description: Full replacement; optional fields left out become `null`.
+      operationId: updateArtist
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ArtistInput'}
+            example: {name: Paul Cézanne, birthYear: 1839, deathYear: 1906, nationality: French}
+      responses:
+        '200':
+          description: The updated artist.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Artist'}
+            application/xml:
+              schema: {$ref: '#/components/schemas/Artist'}
+            application/yaml:
+              schema: {$ref: '#/components/schemas/Artist'}
+        '400': {$ref: '#/components/responses/MalformedJson'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '406': {$ref: '#/components/responses/NotAcceptable'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '500': {$ref: '#/components/responses/ServerError'}
+    delete:
+      tags: [Artists]
+      summary: Delete an artist
+      description: An artist that still has artworks cannot be deleted (`409`).
+      operationId: deleteArtist
+      responses:
+        '204': {description: Deleted. No body.}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '406': {$ref: '#/components/responses/NotAcceptable'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '500': {$ref: '#/components/responses/ServerError'}
+
+  /artists/{id}/artworks:
+    parameters:
+      - {$ref: '#/components/parameters/Id'}
+    get:
+      tags: [Artists]
+      summary: Artworks by one artist
+      description: Not paginated yet (Build 3).
+      operationId: listArtistArtworks
+      responses:
+        '200':
+          description: A plain list of the artist's artworks (without `tags`).
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Artwork'
-        '400':
-          description: Invalid input data
-        '401':
-          description: Unauthorized
-        '404':
-          description: Artwork not found
+                type: array
+                items: {$ref: '#/components/schemas/ArtworkSummary'}
+              example:
+                - {id: 1, title: Poppies, creationYear: 1873, medium: Oil on canvas, period: Impressionism, dimensions: null, artistId: 1, museumId: 1}
+            application/xml:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/ArtworkSummary'}
+            application/yaml:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/ArtworkSummary'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '406': {$ref: '#/components/responses/NotAcceptable'}
+        '500': {$ref: '#/components/responses/ServerError'}
 
-    delete:
-      summary: Delete an artwork
-      description: Removes an artwork record by ID. Requires user authentication.
-      parameters:
-        - in: path
-          name: id
-          required: true
-          description: The unique identifier of the artwork to delete
-          schema:
-            type: integer
-          example: 101
+  /artists/{id}/external:
+    parameters:
+      - {$ref: '#/components/parameters/Id'}
+    get:
+      tags: [Composite]
+      summary: An artist, their artworks and matching data from the Art Institute of Chicago
+      description: |
+        Same failure policy as `/artworks/{id}/external`: museum problems never break this
+        endpoint, they only turn `external` into `null` and set `externalStatus`
+        (`ok`, `not_found` or `unavailable`).
+      operationId: getArtistWithExternal
       responses:
-        '204':
-          description: Artwork successfully deleted (No Content)
-        '401':
-          description: Unauthorized
-        '404':
-          description: Artwork not found
+        '200':
+          description: The artist with their artworks and external data.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ArtistComposite'}
+              example:
+                artist: {id: 1, name: Claude Monet, birthYear: 1840, deathYear: 1926, nationality: French}
+                artworks:
+                  - {id: 1, title: Poppies, creationYear: 1873, medium: Oil on canvas, period: Impressionism, dimensions: null, artistId: 1, museumId: 1}
+                external:
+                  source: Art Institute of Chicago
+                  sourceUrl: https://www.artic.edu/artists/35809
+                  attribution: Data courtesy of the Art Institute of Chicago (CC0 1.0)
+                  name: Claude Monet
+                  birthYear: 1840
+                  deathYear: 1926
+                  description: French Impressionist painter.
+                externalStatus: ok
+            application/xml:
+              schema: {$ref: '#/components/schemas/ArtistComposite'}
+            application/yaml:
+              schema: {$ref: '#/components/schemas/ArtistComposite'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '406': {$ref: '#/components/responses/NotAcceptable'}
+        '500': {$ref: '#/components/responses/ServerError'}
+
+  /museums:
+    get:
+      tags: [Museums]
+      summary: List museums
+      description: Read-only. Not paginated yet (Build 3).
+      operationId: listMuseums
+      responses:
+        '200':
+          description: All museums.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Museum'}
+              example:
+                - {id: 1, name: Musée d'Orsay, city: Paris, country: France, website: 'https://www.musee-orsay.fr'}
+                - {id: 2, name: Van Gogh Museum, city: Amsterdam, country: Netherlands, website: 'https://www.vangoghmuseum.nl'}
+            application/xml:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Museum'}
+            application/yaml:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Museum'}
+        '406': {$ref: '#/components/responses/NotAcceptable'}
+        '500': {$ref: '#/components/responses/ServerError'}
+
+  /museums/{id}:
+    parameters:
+      - {$ref: '#/components/parameters/Id'}
+    get:
+      tags: [Museums]
+      summary: Get one museum
+      operationId: getMuseum
+      responses:
+        '200':
+          description: The museum.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Museum'}
+              example: {id: 1, name: Musée d'Orsay, city: Paris, country: France, website: 'https://www.musee-orsay.fr'}
+            application/xml:
+              schema: {$ref: '#/components/schemas/Museum'}
+            application/yaml:
+              schema: {$ref: '#/components/schemas/Museum'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '406': {$ref: '#/components/responses/NotAcceptable'}
+        '500': {$ref: '#/components/responses/ServerError'}
+
+  /museums/{id}/artworks:
+    parameters:
+      - {$ref: '#/components/parameters/Id'}
+    get:
+      tags: [Museums]
+      summary: Artworks held by one museum
+      description: Not paginated yet (Build 3).
+      operationId: listMuseumArtworks
+      responses:
+        '200':
+          description: A plain list of the museum's artworks.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: {type: integer}
+                    title: {type: string}
+                    creationYear: {type: integer}
+                    medium: {type: string, nullable: true}
+                    period: {type: string, nullable: true}
+              example:
+                - {id: 1, title: Poppies, creationYear: 1873, medium: Oil on canvas, period: Impressionism}
+            application/xml:
+              schema: {type: array, items: {type: object}}
+            application/yaml:
+              schema: {type: array, items: {type: object}}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '406': {$ref: '#/components/responses/NotAcceptable'}
+        '500': {$ref: '#/components/responses/ServerError'}
 
 components:
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      description: Numeric id of the resource (positive integer).
+      schema: {type: integer, minimum: 1}
+      example: 1
+    Page:
+      name: page
+      in: query
+      description: Page number (1-1000).
+      schema: {type: integer, minimum: 1, maximum: 1000, default: 1}
+    Limit:
+      name: limit
+      in: query
+      description: Items per page (1-100).
+      schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+    Order:
+      name: order
+      in: query
+      schema: {type: string, enum: [asc, desc], default: asc}
+
+  headers:
+    Location:
+      description: URL of the newly created resource.
+      schema: {type: string}
+      example: /ArtGateway/artgateway-api/artists/3
+
   schemas:
+    ApiInfo:
+      type: object
+      properties:
+        api: {type: string}
+        version: {type: string}
+        about: {type: string}
+        resources: {type: array, items: {type: string}}
+        formats: {type: array, items: {type: string}}
     Artwork:
       type: object
-      required:
-        - title
-        - creationYear
-        - artistId
       properties:
-        id:
-          type: integer
-          readOnly: true
-          example: 101
-        title:
-          type: string
-          example: "The Starry Night"
-        creationYear:
-          type: integer
-          example: 1889
-        medium:
-          type: string
-          example: "Oil on canvas"
-        period:
-          type: string
-          example: "Post-Impressionism"
-        dimensions:
-          type: string
-          example: "73.7 cm × 92.1 cm"
-        artistId:
-          type: integer
-          example: 102
-        museumId:
-          type: integer
-          example: 4
+        id: {type: integer}
+        title: {type: string}
+        creationYear: {type: integer}
+        medium: {type: string, nullable: true}
+        period: {type: string, nullable: true}
+        dimensions: {type: string, nullable: true}
+        artistId: {type: integer}
+        museumId: {type: integer, nullable: true}
         tags:
           type: array
-          items:
-            type: string
-          example: ["night", "landscape", "swirls"]
-
+          description: Read-only for now.
+          items: {type: string}
+    ArtworkSummary:
+      type: object
+      properties:
+        id: {type: integer}
+        title: {type: string}
+        creationYear: {type: integer}
+        medium: {type: string, nullable: true}
+        period: {type: string, nullable: true}
+        dimensions: {type: string, nullable: true}
+        artistId: {type: integer}
+        museumId: {type: integer, nullable: true}
+    ArtworkInput:
+      type: object
+      required: [title, creationYear, artistId]
+      properties:
+        title: {type: string, minLength: 1, maxLength: 255}
+        creationYear: {type: integer, minimum: -3000, description: Cannot be in the future.}
+        medium: {type: string, maxLength: 150, nullable: true}
+        period: {type: string, maxLength: 100, nullable: true}
+        dimensions: {type: string, maxLength: 100, nullable: true}
+        artistId: {type: integer, minimum: 1, description: Must be an existing artist.}
+        museumId: {type: integer, minimum: 1, nullable: true, description: Must be an existing museum when given.}
     Artist:
       type: object
-      required:
-        - name
       properties:
-        id:
-          type: integer
-          readOnly: true
-          example: 102
-        name:
-          type: string
-          example: "Vincent van Gogh"
-        birthYear:
-          type: integer
-          example: 1853
-        deathYear:
-          type: integer
-          example: 1890
-        nationality:
-          type: string
-          example: "Dutch"
-
+        id: {type: integer}
+        name: {type: string}
+        birthYear: {type: integer, nullable: true}
+        deathYear: {type: integer, nullable: true}
+        nationality: {type: string, nullable: true}
+    ArtistInput:
+      type: object
+      required: [name]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 150}
+        birthYear: {type: integer, minimum: -3000, nullable: true, description: Cannot be in the future.}
+        deathYear: {type: integer, minimum: -3000, nullable: true, description: Cannot be before birthYear.}
+        nationality: {type: string, maxLength: 100, nullable: true}
     Museum:
       type: object
-      required:
-        - name
-        - city
-        - country
       properties:
-        id:
-          type: integer
-          readOnly: true
-          example: 4
-        name:
-          type: string
-          example: "Museum of Modern Art"
-        city:
-          type: string
-          example: "New York"
-        country:
-          type: string
-          example: "United States"
-        website:
-          type: string
-          example: "https://www.moma.org"
-
-    Collection:
+        id: {type: integer}
+        name: {type: string}
+        city: {type: string}
+        country: {type: string}
+        website: {type: string, nullable: true}
+    Pagination:
       type: object
-      required:
-        - title
-        - description
       properties:
-        id:
-          type: integer
-          readOnly: true
-          example: 10
-        title:
-          type: string
-          example: "Highlights of European Masterpieces"
-        description:
-          type: string
-          example: "A curated selection of notable European artworks across periods."
-        isPublic:
-          type: boolean
-          example: true
-        artworkIds:
+        current_page: {type: integer}
+        per_page: {type: integer}
+        total_items: {type: integer}
+        total_pages: {type: integer}
+    PageLinks:
+      type: object
+      properties:
+        first: {type: string}
+        prev: {type: string, nullable: true}
+        next: {type: string, nullable: true}
+        last: {type: string}
+    ArtworkPage:
+      type: object
+      properties:
+        data:
           type: array
-          items:
-            type: integer
-          example: [101, 102, 105]
+          items: {$ref: '#/components/schemas/Artwork'}
+        pagination: {$ref: '#/components/schemas/Pagination'}
+        links: {$ref: '#/components/schemas/PageLinks'}
+    ArtistPage:
+      type: object
+      properties:
+        data:
+          type: array
+          items: {$ref: '#/components/schemas/Artist'}
+        pagination: {$ref: '#/components/schemas/Pagination'}
+        links: {$ref: '#/components/schemas/PageLinks'}
+    ExternalStatus:
+      type: string
+      enum: [ok, not_found, unavailable]
+    ExternalArtwork:
+      type: object
+      nullable: true
+      properties:
+        source: {type: string}
+        sourceUrl: {type: string}
+        attribution: {type: string}
+        title: {type: string}
+        artist: {type: string, nullable: true}
+        dateDisplay: {type: string, nullable: true}
+        medium: {type: string, nullable: true}
+        placeOfOrigin: {type: string, nullable: true}
+        department: {type: string, nullable: true}
+        description: {type: string, nullable: true}
+        isPublicDomain: {type: boolean}
+        imageUrl: {type: string, nullable: true, description: Only set for public-domain works.}
+    ExternalArtist:
+      type: object
+      nullable: true
+      properties:
+        source: {type: string}
+        sourceUrl: {type: string}
+        attribution: {type: string}
+        name: {type: string}
+        birthYear: {type: integer, nullable: true}
+        deathYear: {type: integer, nullable: true}
+        description: {type: string, nullable: true}
+    ArtworkComposite:
+      type: object
+      properties:
+        artwork: {$ref: '#/components/schemas/Artwork'}
+        external: {$ref: '#/components/schemas/ExternalArtwork'}
+        externalStatus: {$ref: '#/components/schemas/ExternalStatus'}
+    ArtistComposite:
+      type: object
+      properties:
+        artist: {$ref: '#/components/schemas/Artist'}
+        artworks:
+          type: array
+          items: {$ref: '#/components/schemas/ArtworkSummary'}
+        external: {$ref: '#/components/schemas/ExternalArtist'}
+        externalStatus: {$ref: '#/components/schemas/ExternalStatus'}
+    Error:
+      type: object
+      required: [status, error, message, requestId]
+      properties:
+        status: {type: integer, example: 422}
+        error: {type: string, example: Unprocessable Entity}
+        message: {type: string, example: Validation failed}
+        details:
+          type: object
+          description: Field name -> what is wrong. Only on validation errors.
+          additionalProperties: {type: string}
+        requestId: {type: string, example: 2acd6dc6dd75fe41}
+
+  responses:
+    BadRequest:
+      description: Invalid path id or query parameter (for example `limit=500`, `id=abc`, or a min greater than its max).
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+          example:
+            status: 400
+            error: Bad Request
+            message: Validation failed
+            details: {limit: limit cannot exceed 100.}
+            requestId: ebba5bc42cebb95b
+        application/xml:
+          schema: {$ref: '#/components/schemas/Error'}
+        application/yaml:
+          schema: {$ref: '#/components/schemas/Error'}
+    MalformedJson:
+      description: The request body is not valid JSON.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+          example: {status: 400, error: Bad Request, message: Request body is not valid JSON, requestId: e99d34ae60801193}
+    NotFound:
+      description: No resource with that id.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+          example: {status: 404, error: Not Found, message: Artwork not found, requestId: bfeaec705b2997ae}
+        application/xml:
+          schema: {$ref: '#/components/schemas/Error'}
+        application/yaml:
+          schema: {$ref: '#/components/schemas/Error'}
+    NotAcceptable:
+      description: The `Accept` header allows none of application/json, application/xml, application/yaml. Always returned as JSON.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+          example:
+            status: 406
+            error: Not Acceptable
+            message: 'This API can only return: application/json, application/xml, application/yaml'
+            requestId: e947ab25947d13ee
+    UnsupportedMediaType:
+      description: The request `Content-Type` is not `application/json`.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+          example: {status: 415, error: Unsupported Media Type, message: 'Request body must be sent as: application/json', requestId: 2e834f8bfe5df349}
+    ValidationFailed:
+      description: The body is valid JSON but some fields are not acceptable.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+          example:
+            status: 422
+            error: Unprocessable Entity
+            message: Validation failed
+            details: {name: name cannot be empty, birthYear: birthYear must be a whole number}
+            requestId: 2acd6dc6dd75fe41
+        application/xml:
+          schema: {$ref: '#/components/schemas/Error'}
+        application/yaml:
+          schema: {$ref: '#/components/schemas/Error'}
+    Conflict:
+      description: The request conflicts with existing data.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+          example:
+            status: 409
+            error: Conflict
+            message: This artist still has artworks. Delete or reassign them first.
+            requestId: 1d3b0f9c45ad044f
+    ServerError:
+      description: Unexpected server error. Details are only in the server log, found with `requestId`.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}

@@ -34,4 +34,15 @@ foreach ($configFiles as $configFile) {
     }
 }
 
+// External service: Art Institute of Chicago (free, no API key, 60 requests/minute per IP)
+$settings['external']['artic'] = [
+    'base_uri' => 'https://api.artic.edu/api/v1/',
+    // Total time (seconds) we are willing to wait for the whole request.
+    'timeout' => 3.0,
+    // Time (seconds) we are willing to wait just to connect.
+    'connect_timeout' => 2.0,
+    // The museum asks API users to identify themselves (project name + contact).
+    'user_agent' => 'ArtGateway student project (contact: jiayu.joyho@gmail.com)',
+];
+
 return $settings;

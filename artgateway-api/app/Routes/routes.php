@@ -9,6 +9,8 @@ use App\Controllers\MuseumController;
 use App\Helpers\DateTimeHelper;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
+use App\Controllers\ArtworkExternalController;
+use App\Controllers\ArtistExternalController;
 
 
 return static function (Slim\App $app): void {
@@ -21,11 +23,22 @@ return static function (Slim\App $app): void {
     // ARTWORKS
     $app->get('/artworks', [ArtworkController::class, 'handleGetArtworks']);
     $app->get('/artworks/{id}', [ArtworkController::class, 'handleGetArtworkById']);
+    $app->post('/artworks', [ArtworkController::class, 'handleCreateArtwork']);
+    $app->put('/artworks/{id}', [ArtworkController::class, 'handleUpdateArtwork']);
+    $app->delete('/artworks/{id}', [ArtworkController::class, 'handleDeleteArtwork']);
+
+    // Composite resource: our artwork + info from the Art Institute of Chicago
+    $app->get('/artworks/{id}/external', [ArtworkExternalController::class, 'handleGetArtworkExternal']);
+    // Composite resource: our artist + our artworks + info from the Art Institute of Chicago
+       $app->get('/artists/{id}/external', [ArtistExternalController::class, 'handleGetArtistExternal']);
 
     // ARTISTS
     $app->get('/artists', [ArtistController::class, 'handleGetArtists']);
     $app->get('/artists/{id}', [ArtistController::class, 'handleGetArtistById']);
     $app->get('/artists/{id}/artworks', [ArtistController::class, 'handleGetArtworksByArtist']);
+    $app->post('/artists', [ArtistController::class, 'handleCreateArtist']);
+    $app->put('/artists/{id}', [ArtistController::class, 'handleUpdateArtist']);
+    $app->delete('/artists/{id}', [ArtistController::class, 'handleDeleteArtist']);
 
     // MUSEUMS
     $app->get('/museums', [MuseumController::class, 'handleGetMuseums']);
