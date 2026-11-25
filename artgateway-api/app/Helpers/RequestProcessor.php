@@ -7,13 +7,84 @@ namespace App\Helpers;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use DOMDocument;
 use DOMElement;
-use DOMNode;
-use DOMText;
 use Symfony\Component\Yaml\Yaml;
 use Symfony\Component\Yaml\Exception\ParseException;
 
 class RequestProcessor
 {
+    private const XML_INTEGER_FIELDS = [
+        'birthYear',
+        'creationYear',
+        'deathYear',
+        'artistId',
+        'museumId',
+    ];
+
+    public function formatForContentType(string $contentType): ?string
+    {
+        $mediaType = strtolower(trim(explode(';', $contentType)[0]));
+
+        if (
+            $mediaType === 'application/json'
+            || preg_match('/^application\/[a-z0-9.!#$&^_-]+\+json$/', $mediaType) === 1
+        ) {
+            return 'json';
+        }
+
+        if (
+            in_array($mediaType, ['application/xml', 'text/xml'], true)
+            || preg_match('/^application\/[a-z0-9.!#$&^_-]+\+xml$/', $mediaType) === 1
+        ) {
+            return 'xml';
+        }
+
+        if (in_array($mediaType, [
+            'application/yaml',
+            'text/yaml',
+            'application/x-yaml',
+            'text/x-yaml',
+        ], true)) {
+            return 'yaml';
+        }
+
+        return null;
+    }
+
+    /**
+     * Parse the request body according to its declared media type.
+     *
+     * @return array{
+     *     success: bool,
+     *     data?: array,
+     *     format?: string,
+     *     error?: string,
+     *     status?: int
+     * }
+     */
+    public function processBody(Request $request): array
+    {
+        $format = $this->formatForContentType($request->getHeaderLine('Content-Type'));
+        if ($format === null) {
+            return [
+                'success' => false,
+                'error' => 'Request Content-Type must be JSON, XML, or YAML.',
+                'status' => 415,
+            ];
+        }
+
+        $result = match ($format) {
+            'json' => $this->processJsonBody($request),
+            'xml' => $this->processXmlBody($request),
+            'yaml' => $this->processYamlBody($request),
+        };
+
+        if ($result['success']) {
+            $result['format'] = $format;
+        }
+
+        return $result;
+    }
+
     /**
      * Retrieve and validate a JSON request body.
      *
@@ -155,12 +226,23 @@ class RequestProcessor
         $previousErrorSetting = libxml_use_internal_errors(true);
 
         try {
+            // DTDs are unnecessary for API payloads and can enable entity expansion.
+            if (preg_match('/<!DOCTYPE\b/i', $rawBody) === 1) {
+                return [
+                    'success' => false,
+                    'error' => 'Request body contains invalid or unsafe XML.',
+                    'status' => 400
+                ];
+            }
+
+            $document->resolveExternals = false;
+            $document->substituteEntities = false;
+            $document->validateOnParse = false;
             $loaded = $document->loadXML(
                 $rawBody,
-                LIBXML_NONET | LIBXML_NOBLANKS
+                LIBXML_NONET | LIBXML_NOBLANKS | LIBXML_COMPACT
             );
 
-            // Reject malformed XML and documents with a DOCTYPE
             if (!$loaded || $document->doctype !== null) {
                 return [
                     'success' => false,
@@ -221,7 +303,7 @@ class RequestProcessor
             // Convert nested elements or retrieve text content
             $value = $hasChildren
                 ? $this->xmlElementToArray($child)
-                : trim($child->textContent);
+                : $this->xmlScalar($name, trim($child->textContent));
 
             // Support repeated XML elements
             if (array_key_exists($name, $data)) {
@@ -238,6 +320,22 @@ class RequestProcessor
         }
 
         return $data;
+    }
+
+    private function xmlScalar(string $name, string $value): mixed
+    {
+        if ($value === '') {
+            return null;
+        }
+
+        if (in_array($name, self::XML_INTEGER_FIELDS, true)) {
+            $integer = filter_var($value, FILTER_VALIDATE_INT);
+            if ($integer !== false) {
+                return $integer;
+            }
+        }
+
+        return $value;
     }
     /**
      * Retrieve and validate a YAML request body.
@@ -290,7 +388,12 @@ class RequestProcessor
 
         // 3. Parse the YAML document
         try {
-            $data = Yaml::parse($rawBody);
+            $data = Yaml::parse(
+                $rawBody,
+                Yaml::PARSE_EXCEPTION_ON_INVALID_TYPE,
+                32,
+                32
+            );
 
         } catch (ParseException $exception) {
             return [

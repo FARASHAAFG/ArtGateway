@@ -5,8 +5,9 @@ declare(strict_types=1);
 namespace App\Validation;
 
 /**
- * A helper class that exposes various data validation functions.
- * @author frostybee
+ * Legacy validation helpers retained for compatibility; the API does not use this class.
+ *
+ * @deprecated Use App\Helpers\RequestValidator for API request parameters.
  */
 class ValidationHelper
 {

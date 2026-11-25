@@ -34,11 +34,7 @@ class ArtistExternalController extends BaseController
     //   unavailable  -> the museum did not answer properly, "external" is null
     public function handleGetArtistExternal(Request $request, Response $response, array $args): Response
     {
-        // 1. Validate the id from the URL (must be a positive whole number)
-        if (!isset($args['id']) || !ctype_digit((string) $args['id']) || (int) $args['id'] < 1) {
-            throw new ApiException(400, 'Validation failed', ['id' => 'id must be a positive whole number']);
-        }
-        $id = (int) $args['id'];
+        $id = $this->positivePathId($args);
 
         // 2. Get OUR artist (404 if it does not exist) and OUR artworks by this artist
         $artist = $this->artistModel->getById($id);

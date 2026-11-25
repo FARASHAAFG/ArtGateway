@@ -89,8 +89,8 @@ return function (App $app) {
         throw new ErrorException($message, 0, $severity, $file, $line);
     });
 
-    // Middleware for routing and request processing.
-    $app->addBodyParsingMiddleware();
+    // Request bodies are parsed by ContentNegotiationMiddleware with the API's
+    // JSON/XML/YAML safety rules; do not let Slim reparse them with its defaults.
     $app->addRoutingMiddleware();
 
     // Determine the response format requested by the client.
@@ -107,6 +107,9 @@ return function (App $app) {
     );
 
     // Outermost middleware: assigns a request ID.
-    $app->add(new ResponseFormatMiddleware());
+    $app->add(new ResponseFormatMiddleware(
+        $logger,
+        $container->get(ResponseFactoryInterface::class)
+    ));
     $app->add(new RequestIdMiddleware($logger));
 };

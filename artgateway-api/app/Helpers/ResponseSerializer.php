@@ -100,7 +100,12 @@ class ResponseSerializer
             }
         }
 
-        return $document->saveXML();
+        $serialized = $document->saveXML();
+        if ($serialized === false) {
+            throw new InvalidArgumentException('XML response serialization failed.');
+        }
+
+        return $serialized;
     }
 
     /**

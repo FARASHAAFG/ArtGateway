@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services;
 
 use GuzzleHttp\Client;
+use GuzzleHttp\ClientInterface;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -31,16 +32,21 @@ class ArtInstituteClient
     // Fields requested when searching for a person (artist). The museum calls them "agents".
     private const AGENT_FIELDS = 'id,title,sort_title,alt_titles,birth_date,death_date,description,is_artist';
 
-    private Client $http;
+    private ClientInterface $http;
     private LoggerInterface $logger;
+    private array $requestOptions;
 
-    public function __construct(array $settings, LoggerInterface $logger)
+    public function __construct(
+        array $settings,
+        LoggerInterface $logger,
+        ?ClientInterface $http = null
+    )
     {
         $this->logger = $logger;
 
-        $options = [
-            'base_uri' => $settings['base_uri'],
-            // Time limits: without them a slow museum would freeze OUR api too.
+        // Keep these options on each request as well as the default client so
+        // injected clients retain the same timeout and failure policy.
+        $this->requestOptions = [
             'timeout' => $settings['timeout'],
             'connect_timeout' => $settings['connect_timeout'],
             // We look at the status code ourselves instead of getting exceptions.
@@ -56,10 +62,13 @@ class ArtInstituteClient
         // Ask cURL to stop downloading if the answer is bigger than our limit.
         // (Only added when the cURL extension is installed.)
         if (defined('CURLOPT_MAXFILESIZE')) {
-            $options['curl'] = [CURLOPT_MAXFILESIZE => self::MAX_RESPONSE_BYTES];
+            $this->requestOptions['curl'] = [CURLOPT_MAXFILESIZE => self::MAX_RESPONSE_BYTES];
         }
 
-        $this->http = new Client($options);
+        $this->http = $http ?? new Client([
+            'base_uri' => $settings['base_uri'],
+            ...$this->requestOptions,
+        ]);
     }
 
     /**
@@ -90,9 +99,18 @@ class ArtInstituteClient
         }
 
         // The museum tells us the base address of its images.
-        $iiifUrl = $json['config']['iiif_url'] ?? '';
+        $config = $json['config'] ?? null;
+        if ($config !== null && !is_array($config)) {
+            $this->logUnavailable($requestId, 'upstream sent unexpected image configuration');
+            return ['status' => 'unavailable'];
+        }
+        $iiifUrl = $config['iiif_url'] ?? '';
+        if (!is_string($iiifUrl)) {
+            $this->logUnavailable($requestId, 'upstream sent unexpected image URL');
+            return ['status' => 'unavailable'];
+        }
 
-        return $this->pickBestMatch($json['data'], $title, (string) $artistName, $iiifUrl);
+        return $this->pickBestMatch($json['data'], $title, $artistName ?? '', $iiifUrl);
     }
 
     /**
@@ -129,10 +147,12 @@ class ArtInstituteClient
             }
 
             // The name must be very similar to ours (check the main name and other names).
-            $names = [(string) ($item['title'] ?? '')];
+            $names = [$item['title']];
             if (isset($item['alt_titles']) && is_array($item['alt_titles'])) {
                 foreach (array_slice($item['alt_titles'], 0, 10) as $alt) {
-                    $names[] = (string) $alt;
+                    if (is_string($alt)) {
+                        $names[] = $alt;
+                    }
                 }
             }
 
@@ -155,7 +175,9 @@ class ArtInstituteClient
     private function search(string $path, array $query, string $requestId): ?array
     {
         try {
-            $response = $this->http->request('GET', $path, ['query' => $query]);
+            $options = $this->requestOptions;
+            $options['query'] = $query;
+            $response = $this->http->request('GET', $path, $options);
 
             // ---- Check the answer before trusting it ----
             if ($response->getStatusCode() !== 200) {
@@ -163,8 +185,8 @@ class ArtInstituteClient
                 return null;
             }
 
-            $contentType = strtolower($response->getHeaderLine('Content-Type'));
-            if (!str_contains($contentType, 'json')) {
+            $contentType = strtolower(trim(explode(';', $response->getHeaderLine('Content-Type'), 2)[0]));
+            if ($contentType !== 'application/json' && !str_ends_with($contentType, '+json')) {
                 $this->logUnavailable($requestId, 'upstream did not send JSON');
                 return null;
             }
@@ -177,9 +199,29 @@ class ArtInstituteClient
             }
 
             $json = json_decode($body, true, 10); // 10 = max nesting depth
-            if (!is_array($json) || !isset($json['data']) || !is_array($json['data'])) {
+            if (
+                !is_array($json)
+                || !isset($json['data'])
+                || !is_array($json['data'])
+                || !array_is_list($json['data'])
+            ) {
                 $this->logUnavailable($requestId, 'upstream sent unexpected JSON');
                 return null;
+            }
+
+            foreach ($json['data'] as $item) {
+                if (
+                    !is_array($item)
+                    || !isset($item['id'])
+                    || !is_int($item['id'])
+                    || $item['id'] < 1
+                    || !isset($item['title'])
+                    || !is_string($item['title'])
+                    || $this->cleanText($item['title'], 255) === null
+                ) {
+                    $this->logUnavailable($requestId, 'upstream sent invalid result data');
+                    return null;
+                }
             }
 
             return $json;
@@ -204,13 +246,14 @@ class ArtInstituteClient
             }
 
             // Title must be very similar to ours...
-            similar_text($this->normalize($title), $this->normalize((string) ($item['title'] ?? '')), $percent);
+            similar_text($this->normalize($title), $this->normalize($item['title']), $percent);
             if ($percent < 80) {
                 continue;
             }
 
             // ...and the artist must match too (when we know ours).
-            if ($lastName !== '' && !str_contains($this->normalize((string) ($item['artist_title'] ?? '')), $lastName)) {
+            $itemArtist = is_string($item['artist_title'] ?? null) ? $item['artist_title'] : '';
+            if ($lastName !== '' && !str_contains($this->normalize($itemArtist), $lastName)) {
                 continue;
             }
 
@@ -230,10 +273,11 @@ class ArtInstituteClient
         // Image: only for public domain works (the museum asks for this), and only
         // if the pieces look exactly like what we expect.
         $imageUrl = null;
-        $imageId = (string) ($item['image_id'] ?? '');
+        $imageId = $item['image_id'] ?? null;
         if (
             $isPublicDomain
-            && preg_match('/^[a-f0-9-]{36}$/', $imageId)
+            && is_string($imageId)
+            && preg_match('/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i', $imageId)
             && str_starts_with($iiifUrl, 'https://www.artic.edu/')
         ) {
             $imageUrl = rtrim($iiifUrl, '/') . '/' . $imageId . '/full/843,/0/default.jpg';
@@ -243,13 +287,13 @@ class ArtInstituteClient
             'source' => 'Art Institute of Chicago',
             'sourceUrl' => $id > 0 ? 'https://www.artic.edu/artworks/' . $id : null,
             'attribution' => 'Data courtesy of the Art Institute of Chicago (CC0 1.0)',
-            'title' => $this->cleanText((string) ($item['title'] ?? ''), 255),
-            'artist' => $this->cleanText((string) ($item['artist_title'] ?? ''), 150),
-            'dateDisplay' => $this->cleanText((string) ($item['date_display'] ?? ''), 100),
-            'medium' => $this->cleanText((string) ($item['medium_display'] ?? ''), 255),
-            'placeOfOrigin' => $this->cleanText((string) ($item['place_of_origin'] ?? ''), 100),
-            'department' => $this->cleanText((string) ($item['department_title'] ?? ''), 100),
-            'description' => $this->cleanText((string) ($item['short_description'] ?? ''), 500),
+            'title' => $this->cleanText($item['title'] ?? null, 255),
+            'artist' => $this->cleanText($item['artist_title'] ?? null, 150),
+            'dateDisplay' => $this->cleanText($item['date_display'] ?? null, 100),
+            'medium' => $this->cleanText($item['medium_display'] ?? null, 255),
+            'placeOfOrigin' => $this->cleanText($item['place_of_origin'] ?? null, 100),
+            'department' => $this->cleanText($item['department_title'] ?? null, 100),
+            'description' => $this->cleanText($item['short_description'] ?? null, 500),
             'isPublicDomain' => $isPublicDomain,
             'imageUrl' => $imageUrl,
         ];
@@ -264,10 +308,10 @@ class ArtInstituteClient
             'source' => 'Art Institute of Chicago',
             'sourceUrl' => $id > 0 ? 'https://www.artic.edu/artists/' . $id : null,
             'attribution' => 'Data courtesy of the Art Institute of Chicago (CC0 1.0)',
-            'name' => $this->cleanText((string) ($item['title'] ?? ''), 150),
+            'name' => $this->cleanText($item['title'] ?? null, 150),
             'birthYear' => $this->cleanYear($item['birth_date'] ?? null),
             'deathYear' => $this->cleanYear($item['death_date'] ?? null),
-            'description' => $this->cleanText((string) ($item['description'] ?? ''), 1000),
+            'description' => $this->cleanText($item['description'] ?? null, 1000),
         ];
     }
 
@@ -285,8 +329,12 @@ class ArtInstituteClient
 
     // Removes HTML tags, extra spaces and cuts the text to a maximum length.
     // Empty text becomes null.
-    private function cleanText(string $text, int $maxLength): ?string
+    private function cleanText(mixed $text, int $maxLength): ?string
     {
+        if (!is_string($text)) {
+            return null;
+        }
+
         $text = trim(preg_replace('/\s+/', ' ', strip_tags($text)));
         if ($text === '') {
             return null;

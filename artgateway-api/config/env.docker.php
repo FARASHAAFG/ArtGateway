@@ -12,12 +12,26 @@ declare(strict_types=1);
  */
 
 return function (array $settings): array {
-    // Database credentials for Docker MySQL container
-    $settings['db']['host'] = 'db';  // Docker service name
-    $settings['db']['username'] = 'slim_user';
-    $settings['db']['database'] = 'slim_app';
-    $settings['db']['password'] = 'slim_pass';
+    $requiredEnvironmentValue = static function (string $name): string {
+        $value = getenv($name);
+        if ($value === false || trim($value) === '') {
+            throw new RuntimeException("Required environment variable {$name} is not set.");
+        }
+
+        return $value;
+    };
+
+    $settings['db']['host'] = $requiredEnvironmentValue('DB_HOST');
+    $settings['db']['username'] = $requiredEnvironmentValue('DB_USERNAME');
+    $settings['db']['password'] = $requiredEnvironmentValue('DB_PASSWORD');
+    $settings['db']['database'] = 'artgateway_db';
     $settings['db']['port'] = '3306';
+
+    $jwtSecret = $requiredEnvironmentValue('JWT_SECRET');
+    if (strlen($jwtSecret) < 32) {
+        throw new RuntimeException('JWT_SECRET must contain at least 32 characters.');
+    }
+    $settings['jwt']['secret'] = $jwtSecret;
 
     return $settings;
 };

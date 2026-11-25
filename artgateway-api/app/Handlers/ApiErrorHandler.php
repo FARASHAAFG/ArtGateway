@@ -28,6 +28,8 @@ class ApiErrorHandler
     // Short titles for the "error" field.
     private array $titles = [
         400 => 'Bad Request',
+        401 => 'Unauthorized',
+        403 => 'Forbidden',
         404 => 'Not Found',
         405 => 'Method Not Allowed',
         406 => 'Not Acceptable',

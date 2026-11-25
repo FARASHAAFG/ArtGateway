@@ -5,7 +5,8 @@ declare(strict_types=1);
 
 return function (array $settings): array {
     $settings['db']['database'] = 'artgateway_db';
-    $settings['db']['hostname'] = 'localhost';
+    $settings['db']['host'] = 'localhost';
+    $settings['db']['port'] = '3306';
 
     return $settings;
 };

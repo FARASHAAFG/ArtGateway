@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Controllers;
 
 use App\Exceptions\ApiException;
+use App\Helpers\RequestValidator;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Psr\Http\Message\ResponseInterface as Response;
 //use Psr\Http\Message\ServerRequestInterface as Request;
@@ -12,13 +13,15 @@ use App\Helpers\ResponseSerializer;
 
 abstract class BaseController
 {
+    protected const MAX_DATABASE_ID = 4294967295;
 
     public function __construct() {}
     protected function renderJson(Response $response, array $data, int $status_code = 200): Response
     {
-        // var_dump($data);
-        $payload = json_encode($data, JSON_UNESCAPED_SLASHES |    JSON_PARTIAL_OUTPUT_ON_ERROR);
-        //-- Write JSON data into the response's body.
+        $payload = json_encode(
+            $data,
+            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR
+        );
         $response->getBody()->write($payload);
         return $response->withStatus($status_code)->withAddedHeader(HEADERS_CONTENT_TYPE, APP_MEDIA_TYPE_JSON);
     }
@@ -52,17 +55,27 @@ abstract class BaseController
             );
     }
     /**
-     * Returns the JSON body of the request as an array.
-     * Throws 400 if there is no body or it is not a JSON object like {"name": "x"}.
+     * Returns a parsed JSON, XML, or YAML object body as an array.
      */
-    protected function getJsonBody(Request $request): array
+    protected function getRequestBody(Request $request): array
     {
         $body = $request->getParsedBody();
 
-        if (!is_array($body) || empty($body)) {
-            throw new ApiException(400, 'A JSON object is required in the request body');
+        if (!is_array($body) || ($body !== [] && array_is_list($body))) {
+            throw new ApiException(400, 'An object or mapping is required in the request body');
         }
         return $body;
+    }
+
+    protected function positivePathId(array $args): int
+    {
+        $validator = new RequestValidator($args);
+        $validator->integer('id', true, 1, self::MAX_DATABASE_ID);
+        if ($validator->hasErrors()) {
+            throw new ApiException(400, 'Validation failed', $validator->getErrors());
+        }
+
+        return $validator->getValidated()['id'];
     }
 
     /**
@@ -74,6 +87,39 @@ abstract class BaseController
         if (!empty($errors)) {
             throw new ApiException(422, 'Validation failed', $errors);
         }
+    }
+
+    protected function buildPaginatedResult(
+        Request $request,
+        array $data,
+        int $page,
+        int $limit,
+        int $total
+    ): array {
+        $totalPages = (int) ceil($total / $limit);
+        $queryParams = ['limit' => $limit];
+        $makePageUrl = static function (int $pageNumber) use ($request, $queryParams): string {
+            $query = http_build_query(array_merge($queryParams, ['page' => $pageNumber]));
+            return (string) $request->getUri()->withQuery($query);
+        };
+
+        return [
+            'data' => $data,
+            'pagination' => [
+                'current_page' => $page,
+                'per_page' => $limit,
+                'total_items' => $total,
+                'total_pages' => $totalPages,
+            ],
+            'links' => [
+                'first' => $totalPages > 0 ? $makePageUrl(1) : null,
+                'prev' => $page > 1 && $totalPages > 0
+                    ? $makePageUrl(min($page - 1, $totalPages))
+                    : null,
+                'next' => $page < $totalPages ? $makePageUrl($page + 1) : null,
+                'last' => $totalPages > 0 ? $makePageUrl($totalPages) : null,
+            ],
+        ];
     }
 
     /**

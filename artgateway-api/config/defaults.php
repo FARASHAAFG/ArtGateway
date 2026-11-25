@@ -13,9 +13,11 @@ ini_set('display_startup_errors', '0');
 date_default_timezone_set('America/Toronto');
 
 
-function myCustomErrorHandler(int $error_no, string $error_message, string $file, int $line)
-{
-    echo sprintf('Oh snap! Something went wrong... Error: #%d occurred in %s at line %d: Message: %s ', $error_no, $file, $line, $error_message);
+if (!function_exists('myCustomErrorHandler')) {
+    function myCustomErrorHandler(int $error_no, string $error_message, string $file, int $line)
+    {
+        echo sprintf('Oh snap! Something went wrong... Error: #%d occurred in %s at line %d: Message: %s ', $error_no, $file, $line, $error_message);
+    }
 }
 
 set_error_handler('myCustomErrorHandler');
@@ -39,6 +41,8 @@ $settings['logger'] = [
 // Database settings
 $settings['db'] = [
     'host' => 'localhost',
+    'port' => '3306',
+    'database' => 'artgateway_db',
     'encoding' => 'utf8mb4',
     'options' => [
         // Turn off persistent connections
@@ -54,6 +58,13 @@ $settings['db'] = [
         // Set character set (use new constant on PHP 8.4+, fallback for older versions)
         (class_exists('Pdo\\Mysql') ? Pdo\Mysql::ATTR_INIT_COMMAND : PDO::MYSQL_ATTR_INIT_COMMAND) => 'SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci'
     ]
+];
+
+// JWT settings!
+$settings['jwt'] = [
+    "algorithm" => "HS256",
+    "expiry" => 3600,
+    "secret" => getenv('JWT_SECRET') !== false ? getenv('JWT_SECRET') : ($_ENV['JWT_SECRET'] ?? ''),
 ];
 
 return $settings;

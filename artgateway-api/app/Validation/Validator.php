@@ -13,6 +13,7 @@ namespace App\Validation;
  * @author  Vance Lucas <vance@vancelucas.com>
  * @link    http://www.vancelucas.com/
  * @see:https://github.com/vlucas/valitron
+ * @deprecated The API has no call sites for this legacy validator. Use App\Helpers\RequestValidator.
  */
 class Validator
 {

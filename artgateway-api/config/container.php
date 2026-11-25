@@ -21,7 +21,7 @@ use App\Services\ArtInstituteClient;
 $definitions = [
     AppSettings::class => function () {
         return new AppSettings(
-            require_once __DIR__ . '/settings.php'
+            require __DIR__ . '/settings.php'
         );
     },
     App::class => function (ContainerInterface $container) {
@@ -31,10 +31,10 @@ $definitions = [
         $app->setBasePath(APP_ROOT_DIR ? '/' . APP_ROOT_DIR : '');
 
         // Register routes
-        (require_once __DIR__ . '/../app/Routes/routes.php')($app);
+        (require __DIR__ . '/../app/Routes/routes.php')($app);
 
         // Register middleware
-        (require_once __DIR__ . '/middleware.php')($app);
+        (require __DIR__ . '/middleware.php')($app);
 
         return $app;
     },

@@ -65,8 +65,8 @@ class ArtworkController extends BaseController
         $validator->string('period');
         $validator->string('title', false, 255);
 
-        $validator->integer('year_min');
-        $validator->integer('year_max');
+        $validator->integer('year_min', false, -3000, (int) date('Y'));
+        $validator->integer('year_max', false, -3000, (int) date('Y'));
 
         // Return validation errors if any exist
         if ($validator->hasErrors()) {
@@ -189,45 +189,13 @@ class ArtworkController extends BaseController
     /**
      * Retrieve a single artwork by ID.
      */
-    /*public function handleGetArtworkById(
-        Request $request,
-        Response $response,
-        array $args
-    ): Response {
-
-        $id = (int) $args['id'];
-
-        $artwork = $this->artworkModel->getById($id);
-
-        if (!$artwork) {
-            throw new ApiException(404, 'Artwork not found');
-        }
-
-        return $this->renderJson($response, $artwork);
-    }*/
-    /**
-     * Retrieve a single artwork by ID.
-     */
     public function handleGetArtworkById(
         Request $request,
         Response $response,
         array $args
     ): Response {
 
-        // 1. VALIDATE THE ARTWORK ID
-        $validator = new RequestValidator($args);
-
-        $validator->integer('id', true, 1);
-
-        // Return validation errors if any exist
-        if ($validator->hasErrors()) {
-            throw new ApiException(400, 'Validation failed', $validator->getErrors());
-        }
-
-        // 2. RETRIEVE THE VALIDATED ID
-        $validated = $validator->getValidated();
-
-        $id = $validated['id'];
+        $id = $this->positivePathId($args);
 
         // 3. RETRIEVE THE ARTWORK
         $artwork = $this->artworkModel->getById($id);
@@ -242,56 +210,10 @@ class ArtworkController extends BaseController
         //return $this->renderJson($response, $artwork);
         return $this->renderResponse($request, $response, $artwork);
     }
- /* Retrieve a single artwork by ID.
- */
-/*public function handleGetArtworkById(
-    Request $request,
-    Response $response,
-    array $args
-): Response {
-
-    // 1. VALIDATE THE ARTWORK ID
-    $validator = new RequestValidator($args);
-
-    $validator->integer('id', true, 1);
-
-    // Return validation errors if any exist
-    if ($validator->hasErrors()) {
-        return $this->renderJson(
-            $response,
-            [
-                'error' => 'Validation failed.',
-                'details' => $validator->getErrors()
-            ],
-            400
-        );
-    }
-
-    // 2. RETRIEVE THE VALIDATED ID
-    $validated = $validator->getValidated();
-
-    $id = $validated['id'];
-
-    // 3. RETRIEVE THE ARTWORK
-    $artwork = $this->artworkModel->getById($id);
-
-    // Return 404 if the artwork does not exist
-    if (!$artwork) {
-        return $this->renderJson(
-            $response,
-            ['error' => 'Artwork not found'],
-            404
-        );
-    }
-
-    // 4. RETURN THE ARTWORK
-    return $this->renderJson($response, $artwork);
-}*/
-
     // POST /artworks  ->  201 Created
     public function handleCreateArtwork(Request $request, Response $response): Response
     {
-        $body = $this->getJsonBody($request);
+        $body = $this->getRequestBody($request);
         $data = $this->validateArtwork($body);
 
         $newId = $this->artworkModel->create($data);
@@ -305,13 +227,13 @@ class ArtworkController extends BaseController
     // PUT /artworks/{id}  ->  200 OK (replaces ALL the fields)
     public function handleUpdateArtwork(Request $request, Response $response, array $args): Response
     {
-        $id = (int)$args['id'];
+        $id = $this->positivePathId($args);
 
         if (!$this->artworkModel->getById($id)) {
             throw new ApiException(404, 'Artwork not found');
         }
 
-        $body = $this->getJsonBody($request);
+        $body = $this->getRequestBody($request);
         $data = $this->validateArtwork($body);
 
         $this->artworkModel->updateById($id, $data);
@@ -322,7 +244,7 @@ class ArtworkController extends BaseController
     // DELETE /artworks/{id}  ->  204 No Content
     public function handleDeleteArtwork(Request $request, Response $response, array $args): Response
     {
-        $id = (int)$args['id'];
+        $id = $this->positivePathId($args);
 
         if (!$this->artworkModel->getById($id)) {
             throw new ApiException(404, 'Artwork not found');
@@ -347,8 +269,8 @@ class ArtworkController extends BaseController
         $medium = $this->checkString($body, 'medium', false, 150, $errors);
         $period = $this->checkString($body, 'period', false, 100, $errors);
         $dimensions = $this->checkString($body, 'dimensions', false, 100, $errors);
-        $artistId = $this->checkInt($body, 'artistId', true, 1, 2147483647, $errors);
-        $museumId = $this->checkInt($body, 'museumId', false, 1, 2147483647, $errors);
+        $artistId = $this->checkInt($body, 'artistId', true, 1, self::MAX_DATABASE_ID, $errors);
+        $museumId = $this->checkInt($body, 'museumId', false, 1, self::MAX_DATABASE_ID, $errors);
 
         // The artist (and museum, if given) must really exist.
         // We only check when the id itself was valid, so we don't stack two errors on one field.

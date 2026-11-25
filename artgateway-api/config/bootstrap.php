@@ -19,7 +19,7 @@ require_once __DIR__ . '/constants.php';
 require_once __DIR__ . '/functions.php';
 
 // Configure the DI container and load dependencies.
-$definitions = require_once __DIR__ . '/container.php';
+$definitions = require __DIR__ . '/container.php';
 
 // Build DI container instance
 //@see https://php-di.org/

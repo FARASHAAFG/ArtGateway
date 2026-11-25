@@ -13,6 +13,117 @@
 
 This repository contains an application skeleton for creating REST-based Web services using the latest version of the [**Slim micro framework**](https://www.slimframework.com/).
 
+## ArtGateway Docker Setup
+
+The Docker application and MariaDB use the `artgateway_db` database. On the first start
+with a new MariaDB data directory, Compose imports the schema from
+`data/sql/artgateway_db.sql`. MariaDB runs initialization scripts only for a new data
+directory; existing volumes are preserved and are not migrated automatically.
+
+From the `artgateway-api` directory, create a private Compose environment file and fill in
+the required values:
+
+```powershell
+Copy-Item .env.example .env
+notepad .env
+```
+
+Set `DB_PASSWORD` and `MARIADB_ROOT_PASSWORD` to unique private database
+passwords.
+Generate `JWT_SECRET` with:
+
+```powershell
+& 'C:\Wampoon\apps\php\php.exe' -n -r 'echo bin2hex(random_bytes(32)), PHP_EOL;'
+```
+
+Paste the generated value into `.env`. Never commit `.env`; it is ignored by Git.
+
+Validate the Compose configuration and start the services:
+
+```powershell
+docker compose config
+docker compose up -d --build
+docker compose ps
+```
+
+The API is available at `http://localhost:8080/` and phpMyAdmin at
+`http://localhost:8081/`. Verify the initialized tables without changing data:
+
+```powershell
+docker compose exec db mariadb -u root -p -e "SHOW TABLES FROM artgateway_db;"
+```
+
+MariaDB prompts for the `MARIADB_ROOT_PASSWORD` from `.env`. Do not run
+`docker compose down -v` to apply schema changes: `-v` deletes the persistent database
+volume. If a volume already exists, first inspect and back it up. Import the schema
+manually only into an empty `artgateway_db`; the SQL contains non-idempotent table
+creation statements. Existing volumes retain their current database users and passwords;
+the values in `.env` do not rotate them. Use the existing credentials when reusing a
+volume, and do not assume a `slim_app` volume has been migrated to `artgateway_db`.
+
+### Local Wampoon configuration
+
+The default `APP_ROOT_DIR` remains `ArtGateway/artgateway-api` for the Wampoon URL path.
+Set the following process environment variables before starting the API if your local
+database differs from the example in `config/env.example.php`:
+
+```powershell
+$env:DB_HOST = 'localhost'
+$env:DB_PORT = '3306'
+$env:DB_DATABASE = 'artgateway_db'
+$env:DB_USERNAME = 'root'
+$env:DB_PASSWORD = ''
+$env:JWT_SECRET = & 'C:\Wampoon\apps\php\php.exe' -n -r 'echo bin2hex(random_bytes(32));'
+$env:APP_ROOT_DIR = 'ArtGateway/artgateway-api'
+.\composer.bat run start
+```
+
+The local database must already contain the ArtGateway schema. Import
+`data/sql/artgateway_db.sql` only into an empty `artgateway_db`.
+
+## Automated tests
+
+The test suite uses PHPUnit 11 (PHP 8.2+) and separates component/HTTP tests from
+MariaDB-backed endpoint integration tests. `APP_ENV=test` loads only
+`config/settings.test.php`; it does not read `config/env.php`, the root `env.php`, or
+the normal `DB_*`/`JWT_SECRET` variables.
+
+Install dependencies and run all tests (integration tests are reported as skipped if
+the isolated MariaDB service is not running):
+
+```powershell
+.\composer.bat install
+.\composer.bat test
+```
+
+Run only the tests that do not require MariaDB:
+
+```powershell
+.\composer.bat test:unit
+```
+
+Artwork endpoint tests use a separate MariaDB Compose file, a separate `127.0.0.1:3307`
+port, a dedicated test account, and a MariaDB `tmpfs` data directory. It does not use or
+mount the application database volume. The canonical schema is loaded into that
+disposable database on container creation. Start it, run the integration tests, and
+remove the container with:
+
+```powershell
+docker compose -f docker-compose.test.yml up -d --wait test-db
+.\composer.bat test:integration
+docker compose -f docker-compose.test.yml down
+```
+
+The database-backed integration tests create uniquely marked records and delete only the
+rows they created. They verify the test-database marker before writing; if the service is
+unavailable, the tests skip with setup guidance, and if the marker is missing they stop
+instead of touching an unverified database. They also exercise persisted authentication
+behavior and database constraints, including duplicate keys and foreign-key rejection.
+The Art Institute client unit tests and Slim composite-route tests use Guzzle's
+`MockHandler` with controlled fixture responses; they do not contact the real upstream
+service. A passing mocked test is not evidence that the live Art Institute API is
+available.
+
 ## How Do I Use/Deploy this Template?
 
 ### Option 1: Using Composer (Recommended)
@@ -52,9 +163,10 @@ Docker allows you to run the application in containers without installing PHP, A
    rm -rf .git
    ```
 
-4. Start all containers by executing the following command:
+4. Follow [ArtGateway Docker Setup](#artgateway-docker-setup) to create `.env` and start
+   the application:
    ```bash
-   docker-compose up -d
+   docker compose up -d --build
    ```
    > **Note:** Use `docker-compose up -d --build` to rebuild images after modifying the Dockerfile or related configurations.
 
@@ -64,42 +176,20 @@ Docker allows you to run the application in containers without installing PHP, A
 
 **Configuring the Database:**
 
-The default database name is `slim_app`. To use a different database name:
-
-1. Update `docker-compose.yml`:
-   ```yaml
-   db:
-     environment:
-       MYSQL_DATABASE: your_database_name
-   ```
-
-2. Update `config/env.docker.php`:
-   ```php
-   $settings['db']['database'] = 'your_database_name';
-   ```
-
-3. Rebuild containers: `docker-compose up -d --build`
+ArtGateway uses `artgateway_db`. Configure the database user and passwords in the private
+`.env` file as described in [ArtGateway Docker Setup](#artgateway-docker-setup); do not
+change the database name independently in Compose and PHP settings.
 
 **Importing Database Schema:**
 
-To automatically import a database schema when the container starts:
+ArtGateway mounts `data/sql/artgateway_db.sql` as a MariaDB initialization script. MariaDB
+imports it only when creating a new data directory.
 
-1. Place your `.sql` file(s) in the `docker/init-db/` folder
-2. Start the containers: `docker-compose up -d`
+Do not delete the database volume to rerun initialization. Existing volumes are preserved
+and require a separately reviewed, backed-up migration or an import into a confirmed empty
+database.
 
-The SQL files will be executed automatically on first container creation. If you have multiple files, they run in alphabetical order (e.g., `01-schema.sql`, `02-data.sql`).
-
-To re-import the schema, remove the database volume and restart:
-```bash
-docker-compose down -v
-docker-compose up -d
-```
-
-**Database Credentials (for phpMyAdmin):**
-| Username  | Password  |
-| --------- | --------- |
-| root      | secret    |
-| slim_user | slim_pass |
+phpMyAdmin uses the root password from `.env`; no default database passwords are provided.
 
 **Common Commands:**
 
@@ -108,7 +198,6 @@ docker-compose up -d
 | Start containers   | `docker-compose up -d`         |
 | Stop containers    | `docker-compose down`          |
 | View app logs      | `docker-compose logs -f app`   |
-| Delete database    | `docker-compose down -v`       |
 | Rebuild containers | `docker-compose up -d --build` |
 
 **Working with Multiple Projects:**

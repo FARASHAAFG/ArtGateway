@@ -1,5 +1,7 @@
 env.php
 config/env.php
+/.env
+!/.env.example
 
 # Composer and dependencies
 vendor/

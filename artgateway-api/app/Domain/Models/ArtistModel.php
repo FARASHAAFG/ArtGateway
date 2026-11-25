@@ -175,14 +175,33 @@ class ArtistModel extends BaseModel
     /**
      * Retrieve artworks belonging to an artist.
      */
-    public function getArtworksByArtistId(int $id): array
+    public function getArtworksByArtistId(int $id, ?int $limit = null, ?int $offset = null): array
     {
         $sql = "SELECT id, title, creationYear, medium, period,
                        dimensions, artistId, museumId
                 FROM artworks
                 WHERE artistId = :id";
 
-        return $this->fetchAll($sql, ['id' => $id]);
+        $params = ['id' => $id];
+        if ($limit !== null && $offset !== null) {
+            $sql .= " ORDER BY id ASC LIMIT :limit OFFSET :offset";
+            $params['limit'] = max(1, min($limit, 100));
+            $params['offset'] = max(0, $offset);
+        } else {
+            $sql .= " ORDER BY id ASC";
+        }
+
+        return $this->fetchAll($sql, $params);
+    }
+
+    public function countArtworksByArtistId(int $id): int
+    {
+        $row = $this->fetchSingle(
+            'SELECT COUNT(*) AS total_count FROM artworks WHERE artistId = :id',
+            ['id' => $id]
+        );
+
+        return (int) ($row['total_count'] ?? 0);
     }
 
     // Inserts a new artist and returns the new id.

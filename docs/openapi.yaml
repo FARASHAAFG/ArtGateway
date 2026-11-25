@@ -12,11 +12,15 @@ info:
     three is acceptable the API answers `406`. Errors are returned in the same format as
     successful responses (when the format cannot be determined, as with a 406, JSON is used).
 
-    **Request bodies** (POST/PUT) must be `application/json`. XML/YAML request bodies are
-    planned for Build 3 and currently answer `415`.
+    **Request bodies** on registration, login and resource create/update endpoints accept
+    `application/json`, `application/xml`, or `application/yaml`. The request root must be
+    an object/mapping. XML DTDs are rejected; YAML object construction is disabled.
 
-    In XML, the root element is `<response>`, list items are wrapped in `<item>` and `null`
-    becomes an empty tag. Examples in this document are shown in JSON.
+    In XML responses, the root element is `<response>`, list items are wrapped in `<item>` and
+    `null` becomes an empty tag. XML requests may use any root element name; its child elements
+    form the mapping. Examples in this document are shown in JSON.
+
+    `/phpinfo` is an HTML diagnostic page and is not part of the JSON/XML/YAML API contract.
 
     ## Errors
     Every error uses the same body: `status`, `error`, `message`, optional `details`
@@ -25,11 +29,19 @@ info:
     500 errors never expose internal details. Using a method a route does not support gives
     `405` (with an `Allow` header) and an unknown URL gives `404`.
 
-    ## Not implemented yet (planned for Build 3)
-    Authentication/authorization (all endpoints are open for now), XML/YAML request bodies,
-    writing `tags` on artworks (tags are read-only), collections and users endpoints,
-    museum create/update/delete, pagination on `/artists/{id}/artworks`, `/museums` and
-    `/museums/{id}/artworks`, and the PHP/JavaScript consumers of the composite endpoints.
+    ## Authentication
+    Register with `POST /register` and sign in with `POST /login` (or `POST /token`) to
+    receive a one-hour bearer token. Registration always creates a regular user; admin
+    accounts must be provisioned by an administrator. Public read endpoints remain open.
+    All artwork, artist and museum create/update/delete endpoints require an admin token. Send it
+    as `Authorization: Bearer <access_token>`. Configure `JWT_SECRET` to a random secret
+    of at least 32 characters before using authentication. Passwords are limited to 72
+    bytes because the current PHP `PASSWORD_DEFAULT` algorithm uses bcrypt.
+
+    ## Remaining planned work
+    Writing `tags` on artworks and collection/user resource endpoints still need concrete
+    request, response and authorization contracts. The PHP/JavaScript
+    consumers of the composite endpoints are also not described here.
   contact:
     name: ArtGateway team
 servers:
@@ -42,6 +54,7 @@ tags:
   - name: Composite
     description: Our data combined with the Art Institute of Chicago API
   - name: General
+  - name: Authentication
 
 paths:
   /:
@@ -66,6 +79,115 @@ paths:
             application/yaml:
               schema: {$ref: '#/components/schemas/ApiInfo'}
         '406': {$ref: '#/components/responses/NotAcceptable'}
+
+  /register:
+    post:
+      tags: [Authentication]
+      summary: Register a user account
+      operationId: registerUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RegistrationInput'}
+            example: {full_name: Alex Rivera, email: alex@example.com, password: correct-horse-42}
+          application/xml:
+            schema: {$ref: '#/components/schemas/RegistrationInput'}
+            example: <response><full_name>Alex Rivera</full_name><email>alex@example.com</email><password>correct-horse-42</password></response>
+          application/yaml:
+            schema: {$ref: '#/components/schemas/RegistrationInput'}
+            example: {full_name: Alex Rivera, email: alex@example.com, password: correct-horse-42}
+      responses:
+        '201':
+          description: The new account and its bearer token.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/TokenResponse'}
+            application/xml:
+              schema: {$ref: '#/components/schemas/TokenResponse'}
+            application/yaml:
+              schema: {$ref: '#/components/schemas/TokenResponse'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+  /login:
+    post:
+      tags: [Authentication]
+      summary: Sign in as a user or administrator
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/Credentials'}
+          application/xml:
+            schema: {$ref: '#/components/schemas/Credentials'}
+          application/yaml:
+            schema: {$ref: '#/components/schemas/Credentials'}
+      responses:
+        '200':
+          description: The account and its bearer token.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/TokenResponse'}
+            application/xml:
+              schema: {$ref: '#/components/schemas/TokenResponse'}
+            application/yaml:
+              schema: {$ref: '#/components/schemas/TokenResponse'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+  /token:
+    post:
+      tags: [Authentication]
+      summary: Sign in and generate a bearer token (alias for /login)
+      operationId: generateToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/Credentials'}
+          application/xml:
+            schema: {$ref: '#/components/schemas/Credentials'}
+          application/yaml:
+            schema: {$ref: '#/components/schemas/Credentials'}
+      responses:
+        '200':
+          description: The account and its bearer token.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/TokenResponse'}
+            application/xml:
+              schema: {$ref: '#/components/schemas/TokenResponse'}
+            application/yaml:
+              schema: {$ref: '#/components/schemas/TokenResponse'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+  /me:
+    get:
+      tags: [Authentication]
+      summary: Get the authenticated account
+      operationId: getCurrentUser
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: The signed-in account.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user: {$ref: '#/components/schemas/AuthUser'}
+            application/xml:
+              schema:
+                type: object
+                properties:
+                  user: {$ref: '#/components/schemas/AuthUser'}
+            application/yaml:
+              schema:
+                type: object
+                properties:
+                  user: {$ref: '#/components/schemas/AuthUser'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
 
   /artworks:
     get:
@@ -92,13 +214,13 @@ paths:
           example: poppies
         - name: year_min
           in: query
-          description: Only artworks created in or after this year. Cannot exceed `year_max`.
-          schema: {type: integer}
+          description: Only artworks created in or after this year. Must be between -3000 and the current year, and cannot exceed `year_max`.
+          schema: {type: integer, minimum: -3000}
           example: 1800
         - name: year_max
           in: query
-          description: Only artworks created in or before this year.
-          schema: {type: integer}
+          description: Only artworks created in or before this year. Must be between -3000 and the current year.
+          schema: {type: integer, minimum: -3000}
           example: 1900
       responses:
         '200':
@@ -134,6 +256,8 @@ paths:
       tags: [Artworks]
       summary: Create an artwork
       operationId: createArtwork
+      security:
+        - BearerAuth: []
       requestBody:
         required: true
         content:
@@ -147,6 +271,12 @@ paths:
               dimensions: 68 x 92 cm
               artistId: 3
               museumId: 1
+          application/xml:
+            schema: {$ref: '#/components/schemas/ArtworkInput'}
+            example: <response><title>Apples</title><creationYear>1895</creationYear><medium>Oil on canvas</medium><period>Post-Impressionism</period><dimensions>68 x 92 cm</dimensions><artistId>3</artistId><museumId>1</museumId></response>
+          application/yaml:
+            schema: {$ref: '#/components/schemas/ArtworkInput'}
+            example: {title: Apples, creationYear: 1895, medium: Oil on canvas, period: Post-Impressionism, dimensions: '68 x 92 cm', artistId: 3, museumId: 1}
       responses:
         '201':
           description: Created. The `Location` header points to the new artwork.
@@ -170,6 +300,8 @@ paths:
             application/yaml:
               schema: {$ref: '#/components/schemas/Artwork'}
         '400': {$ref: '#/components/responses/MalformedJson'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '406': {$ref: '#/components/responses/NotAcceptable'}
         '415': {$ref: '#/components/responses/UnsupportedMediaType'}
         '422': {$ref: '#/components/responses/ValidationFailed'}
@@ -213,6 +345,8 @@ paths:
         Full replacement: every field is overwritten, so optional fields left out of the body
         become `null`. `tags` cannot be changed yet.
       operationId: updateArtwork
+      security:
+        - BearerAuth: []
       requestBody:
         required: true
         content:
@@ -223,6 +357,12 @@ paths:
               creationYear: 1899
               artistId: 3
               museumId: 1
+          application/xml:
+            schema: {$ref: '#/components/schemas/ArtworkInput'}
+            example: <response><title>Apples and Oranges</title><creationYear>1899</creationYear><artistId>3</artistId><museumId>1</museumId></response>
+          application/yaml:
+            schema: {$ref: '#/components/schemas/ArtworkInput'}
+            example: {title: Apples and Oranges, creationYear: 1899, artistId: 3, museumId: 1}
       responses:
         '200':
           description: The updated artwork.
@@ -234,6 +374,8 @@ paths:
             application/yaml:
               schema: {$ref: '#/components/schemas/Artwork'}
         '400': {$ref: '#/components/responses/MalformedJson'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '406': {$ref: '#/components/responses/NotAcceptable'}
         '415': {$ref: '#/components/responses/UnsupportedMediaType'}
@@ -243,8 +385,12 @@ paths:
       tags: [Artworks]
       summary: Delete an artwork
       operationId: deleteArtwork
+      security:
+        - BearerAuth: []
       responses:
         '204': {description: Deleted. No body.}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '400': {$ref: '#/components/responses/BadRequest'}
         '404': {$ref: '#/components/responses/NotFound'}
         '406': {$ref: '#/components/responses/NotAcceptable'}
@@ -348,12 +494,13 @@ paths:
           example: French
         - name: birthYear_min
           in: query
-          schema: {type: integer}
+          description: Must be between -3000 and the current year.
+          schema: {type: integer, minimum: -3000}
           example: 1800
         - name: birthYear_max
           in: query
-          description: Cannot be lower than `birthYear_min`.
-          schema: {type: integer}
+          description: Must be between -3000 and the current year, and cannot be lower than `birthYear_min`.
+          schema: {type: integer, minimum: -3000}
           example: 1900
       responses:
         '200':
@@ -381,10 +528,18 @@ paths:
       tags: [Artists]
       summary: Create an artist
       operationId: createArtist
+      security:
+        - BearerAuth: []
       requestBody:
         required: true
         content:
           application/json:
+            schema: {$ref: '#/components/schemas/ArtistInput'}
+            example: {name: Paul Cezanne, birthYear: 1839, deathYear: 1906, nationality: French}
+          application/xml:
+            schema: {$ref: '#/components/schemas/ArtistInput'}
+            example: <response><name>Paul Cezanne</name><birthYear>1839</birthYear><deathYear>1906</deathYear><nationality>French</nationality></response>
+          application/yaml:
             schema: {$ref: '#/components/schemas/ArtistInput'}
             example: {name: Paul Cezanne, birthYear: 1839, deathYear: 1906, nationality: French}
       responses:
@@ -401,6 +556,8 @@ paths:
             application/yaml:
               schema: {$ref: '#/components/schemas/Artist'}
         '400': {$ref: '#/components/responses/MalformedJson'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '406': {$ref: '#/components/responses/NotAcceptable'}
         '415': {$ref: '#/components/responses/UnsupportedMediaType'}
         '422': {$ref: '#/components/responses/ValidationFailed'}
@@ -433,10 +590,18 @@ paths:
       summary: Replace an artist
       description: Full replacement; optional fields left out become `null`.
       operationId: updateArtist
+      security:
+        - BearerAuth: []
       requestBody:
         required: true
         content:
           application/json:
+            schema: {$ref: '#/components/schemas/ArtistInput'}
+            example: {name: Paul Cézanne, birthYear: 1839, deathYear: 1906, nationality: French}
+          application/xml:
+            schema: {$ref: '#/components/schemas/ArtistInput'}
+            example: <response><name>Paul Cézanne</name><birthYear>1839</birthYear><deathYear>1906</deathYear><nationality>French</nationality></response>
+          application/yaml:
             schema: {$ref: '#/components/schemas/ArtistInput'}
             example: {name: Paul Cézanne, birthYear: 1839, deathYear: 1906, nationality: French}
       responses:
@@ -450,6 +615,8 @@ paths:
             application/yaml:
               schema: {$ref: '#/components/schemas/Artist'}
         '400': {$ref: '#/components/responses/MalformedJson'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '406': {$ref: '#/components/responses/NotAcceptable'}
         '415': {$ref: '#/components/responses/UnsupportedMediaType'}
@@ -460,8 +627,12 @@ paths:
       summary: Delete an artist
       description: An artist that still has artworks cannot be deleted (`409`).
       operationId: deleteArtist
+      security:
+        - BearerAuth: []
       responses:
         '204': {description: Deleted. No body.}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '400': {$ref: '#/components/responses/BadRequest'}
         '404': {$ref: '#/components/responses/NotFound'}
         '406': {$ref: '#/components/responses/NotAcceptable'}
@@ -474,26 +645,26 @@ paths:
     get:
       tags: [Artists]
       summary: Artworks by one artist
-      description: Not paginated yet (Build 3).
+      description: Paginated list. Returns 404 if the artist does not exist.
       operationId: listArtistArtworks
+      parameters:
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/Limit'}
       responses:
         '200':
-          description: A plain list of the artist's artworks (without `tags`).
+          description: A page of the artist's artworks (without `tags`).
           content:
             application/json:
-              schema:
-                type: array
-                items: {$ref: '#/components/schemas/ArtworkSummary'}
+              schema: {$ref: '#/components/schemas/ArtworkSummaryPage'}
               example:
-                - {id: 1, title: Poppies, creationYear: 1873, medium: Oil on canvas, period: Impressionism, dimensions: null, artistId: 1, museumId: 1}
+                data:
+                  - {id: 1, title: Poppies, creationYear: 1873, medium: Oil on canvas, period: Impressionism, dimensions: null, artistId: 1, museumId: 1}
+                pagination: {current_page: 1, per_page: 20, total_items: 1, total_pages: 1}
+                links: {first: 'http://localhost/ArtGateway/artgateway-api/artists/1/artworks?limit=20&page=1', prev: null, next: null, last: 'http://localhost/ArtGateway/artgateway-api/artists/1/artworks?limit=20&page=1'}
             application/xml:
-              schema:
-                type: array
-                items: {$ref: '#/components/schemas/ArtworkSummary'}
+              schema: {$ref: '#/components/schemas/ArtworkSummaryPage'}
             application/yaml:
-              schema:
-                type: array
-                items: {$ref: '#/components/schemas/ArtworkSummary'}
+              schema: {$ref: '#/components/schemas/ArtworkSummaryPage'}
         '400': {$ref: '#/components/responses/BadRequest'}
         '404': {$ref: '#/components/responses/NotFound'}
         '406': {$ref: '#/components/responses/NotAcceptable'}
@@ -541,29 +712,67 @@ paths:
   /museums:
     get:
       tags: [Museums]
-      summary: List museums
-      description: Read-only. Not paginated yet (Build 3).
+      summary: List museums (paginated)
       operationId: listMuseums
+      parameters:
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/Limit'}
       responses:
         '200':
-          description: All museums.
+          description: A page of museums.
           content:
             application/json:
-              schema:
-                type: array
-                items: {$ref: '#/components/schemas/Museum'}
+              schema: {$ref: '#/components/schemas/MuseumPage'}
               example:
-                - {id: 1, name: Musée d'Orsay, city: Paris, country: France, website: 'https://www.musee-orsay.fr'}
-                - {id: 2, name: Van Gogh Museum, city: Amsterdam, country: Netherlands, website: 'https://www.vangoghmuseum.nl'}
+                data:
+                  - {id: 1, name: Musée d'Orsay, city: Paris, country: France, website: 'https://www.musee-orsay.fr'}
+                pagination: {current_page: 1, per_page: 20, total_items: 1, total_pages: 1}
+                links: {first: 'http://localhost/ArtGateway/artgateway-api/museums?limit=20&page=1', prev: null, next: null, last: 'http://localhost/ArtGateway/artgateway-api/museums?limit=20&page=1'}
             application/xml:
-              schema:
-                type: array
-                items: {$ref: '#/components/schemas/Museum'}
+              schema: {$ref: '#/components/schemas/MuseumPage'}
             application/yaml:
-              schema:
-                type: array
-                items: {$ref: '#/components/schemas/Museum'}
+              schema: {$ref: '#/components/schemas/MuseumPage'}
+        '400': {$ref: '#/components/responses/BadRequest'}
         '406': {$ref: '#/components/responses/NotAcceptable'}
+        '500': {$ref: '#/components/responses/ServerError'}
+    post:
+      tags: [Museums]
+      summary: Create a museum
+      operationId: createMuseum
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/MuseumInput'}
+            example: {name: Example Museum, city: Paris, country: France, website: 'https://example.org'}
+          application/xml:
+            schema: {$ref: '#/components/schemas/MuseumInput'}
+            example: <response><name>Example Museum</name><city>Paris</city><country>France</country><website>https://example.org</website></response>
+          application/yaml:
+            schema: {$ref: '#/components/schemas/MuseumInput'}
+            example: {name: Example Museum, city: Paris, country: France, website: 'https://example.org'}
+      responses:
+        '201':
+          description: The created museum.
+          headers:
+            Location:
+              description: URL of the created museum.
+              schema: {type: string}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Museum'}
+            application/xml:
+              schema: {$ref: '#/components/schemas/Museum'}
+            application/yaml:
+              schema: {$ref: '#/components/schemas/Museum'}
+        '400': {$ref: '#/components/responses/MalformedJson'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '406': {$ref: '#/components/responses/NotAcceptable'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
         '500': {$ref: '#/components/responses/ServerError'}
 
   /museums/{id}:
@@ -584,8 +793,58 @@ paths:
               schema: {$ref: '#/components/schemas/Museum'}
             application/yaml:
               schema: {$ref: '#/components/schemas/Museum'}
+        '400': {$ref: '#/components/responses/BadRequest'}
         '404': {$ref: '#/components/responses/NotFound'}
         '406': {$ref: '#/components/responses/NotAcceptable'}
+        '500': {$ref: '#/components/responses/ServerError'}
+    put:
+      tags: [Museums]
+      summary: Replace a museum
+      description: Full replacement; `website` may be omitted or null.
+      operationId: updateMuseum
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/MuseumInput'}
+          application/xml:
+            schema: {$ref: '#/components/schemas/MuseumInput'}
+          application/yaml:
+            schema: {$ref: '#/components/schemas/MuseumInput'}
+      responses:
+        '200':
+          description: The updated museum.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Museum'}
+            application/xml:
+              schema: {$ref: '#/components/schemas/Museum'}
+            application/yaml:
+              schema: {$ref: '#/components/schemas/Museum'}
+        '400': {$ref: '#/components/responses/MalformedJson'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '406': {$ref: '#/components/responses/NotAcceptable'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '500': {$ref: '#/components/responses/ServerError'}
+    delete:
+      tags: [Museums]
+      summary: Delete a museum
+      description: Deleting a museum sets its artworks' `museumId` to null.
+      operationId: deleteMuseum
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: Museum deleted.
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '404': {$ref: '#/components/responses/NotFound'}
         '500': {$ref: '#/components/responses/ServerError'}
 
   /museums/{id}/artworks:
@@ -594,41 +853,44 @@ paths:
     get:
       tags: [Museums]
       summary: Artworks held by one museum
-      description: Not paginated yet (Build 3).
+      description: Paginated list. Returns 404 if the museum does not exist.
       operationId: listMuseumArtworks
+      parameters:
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/Limit'}
       responses:
         '200':
-          description: A plain list of the museum's artworks.
+          description: A page of the museum's artworks.
           content:
             application/json:
-              schema:
-                type: array
-                items:
-                  type: object
-                  properties:
-                    id: {type: integer}
-                    title: {type: string}
-                    creationYear: {type: integer}
-                    medium: {type: string, nullable: true}
-                    period: {type: string, nullable: true}
+              schema: {$ref: '#/components/schemas/ArtworkSummaryPage'}
               example:
-                - {id: 1, title: Poppies, creationYear: 1873, medium: Oil on canvas, period: Impressionism}
+                data:
+                  - {id: 1, title: Poppies, creationYear: 1873, medium: Oil on canvas, period: Impressionism}
+                pagination: {current_page: 1, per_page: 20, total_items: 1, total_pages: 1}
+                links: {first: 'http://localhost/ArtGateway/artgateway-api/museums/1/artworks?limit=20&page=1', prev: null, next: null, last: 'http://localhost/ArtGateway/artgateway-api/museums/1/artworks?limit=20&page=1'}
             application/xml:
-              schema: {type: array, items: {type: object}}
+              schema: {$ref: '#/components/schemas/ArtworkSummaryPage'}
             application/yaml:
-              schema: {type: array, items: {type: object}}
+              schema: {$ref: '#/components/schemas/ArtworkSummaryPage'}
+        '400': {$ref: '#/components/responses/BadRequest'}
         '404': {$ref: '#/components/responses/NotFound'}
         '406': {$ref: '#/components/responses/NotAcceptable'}
         '500': {$ref: '#/components/responses/ServerError'}
 
 components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
   parameters:
     Id:
       name: id
       in: path
       required: true
-      description: Numeric id of the resource (positive integer).
-      schema: {type: integer, minimum: 1}
+      description: Numeric id of the resource (positive unsigned 32-bit integer).
+      schema: {type: integer, minimum: 1, maximum: 4294967295}
       example: 1
     Page:
       name: page
@@ -652,6 +914,33 @@ components:
       example: /ArtGateway/artgateway-api/artists/3
 
   schemas:
+    RegistrationInput:
+      type: object
+      required: [full_name, email, password]
+      properties:
+        full_name: {type: string, minLength: 1, maxLength: 100}
+        email: {type: string, format: email, maxLength: 255}
+        password: {type: string, description: "Registration requires 8–72 bytes. The current bcrypt hash ignores bytes beyond this limit."}
+    Credentials:
+      type: object
+      required: [email, password]
+      properties:
+        email: {type: string, format: email, maxLength: 255}
+        password: {type: string, description: "At most 72 bytes. The current bcrypt hash ignores bytes beyond this limit."}
+    AuthUser:
+      type: object
+      properties:
+        id: {type: integer}
+        full_name: {type: string}
+        email: {type: string, format: email}
+        role: {type: string, enum: [user, admin]}
+    TokenResponse:
+      type: object
+      properties:
+        access_token: {type: string}
+        token_type: {type: string, enum: [Bearer]}
+        expires_in: {type: integer, example: 3600}
+        user: {$ref: '#/components/schemas/AuthUser'}
     ApiInfo:
       type: object
       properties:
@@ -691,12 +980,12 @@ components:
       required: [title, creationYear, artistId]
       properties:
         title: {type: string, minLength: 1, maxLength: 255}
-        creationYear: {type: integer, minimum: -3000, description: Cannot be in the future.}
+        creationYear: {type: integer, minimum: -3000, description: Must not be in the future.}
         medium: {type: string, maxLength: 150, nullable: true}
         period: {type: string, maxLength: 100, nullable: true}
         dimensions: {type: string, maxLength: 100, nullable: true}
-        artistId: {type: integer, minimum: 1, description: Must be an existing artist.}
-        museumId: {type: integer, minimum: 1, nullable: true, description: Must be an existing museum when given.}
+        artistId: {type: integer, minimum: 1, maximum: 4294967295, description: Must be an existing artist.}
+        museumId: {type: integer, minimum: 1, maximum: 4294967295, nullable: true, description: Must be an existing museum when given.}
     Artist:
       type: object
       properties:
@@ -710,8 +999,8 @@ components:
       required: [name]
       properties:
         name: {type: string, minLength: 1, maxLength: 150}
-        birthYear: {type: integer, minimum: -3000, nullable: true, description: Cannot be in the future.}
-        deathYear: {type: integer, minimum: -3000, nullable: true, description: Cannot be before birthYear.}
+        birthYear: {type: integer, minimum: -3000, nullable: true, description: Must not be in the future.}
+        deathYear: {type: integer, minimum: -3000, nullable: true, description: Must not be in the future or before birthYear when birthYear is provided.}
         nationality: {type: string, maxLength: 100, nullable: true}
     Museum:
       type: object
@@ -721,6 +1010,14 @@ components:
         city: {type: string}
         country: {type: string}
         website: {type: string, nullable: true}
+    MuseumInput:
+      type: object
+      required: [name, city, country]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 200}
+        city: {type: string, minLength: 1, maxLength: 100}
+        country: {type: string, minLength: 1, maxLength: 100}
+        website: {type: string, maxLength: 2048, nullable: true}
     Pagination:
       type: object
       properties:
@@ -731,10 +1028,10 @@ components:
     PageLinks:
       type: object
       properties:
-        first: {type: string}
+        first: {type: string, nullable: true}
         prev: {type: string, nullable: true}
         next: {type: string, nullable: true}
-        last: {type: string}
+        last: {type: string, nullable: true}
     ArtworkPage:
       type: object
       properties:
@@ -751,9 +1048,30 @@ components:
           items: {$ref: '#/components/schemas/Artist'}
         pagination: {$ref: '#/components/schemas/Pagination'}
         links: {$ref: '#/components/schemas/PageLinks'}
+    MuseumPage:
+      type: object
+      properties:
+        data:
+          type: array
+          items: {$ref: '#/components/schemas/Museum'}
+        pagination: {$ref: '#/components/schemas/Pagination'}
+        links: {$ref: '#/components/schemas/PageLinks'}
+    ArtworkSummaryPage:
+      type: object
+      properties:
+        data:
+          type: array
+          items: {$ref: '#/components/schemas/ArtworkSummary'}
+        pagination: {$ref: '#/components/schemas/Pagination'}
+        links: {$ref: '#/components/schemas/PageLinks'}
     ExternalStatus:
       type: string
       enum: [ok, not_found, unavailable]
+      description: |
+        `not_found` means the upstream returned a valid search response with no matching
+        record. Non-200 upstream responses (including 404 and 429), timeouts, invalid JSON,
+        and unexpected response structures are reported as `unavailable`. Upstream quota
+        responses are not retried.
     ExternalArtwork:
       type: object
       nullable: true
@@ -810,6 +1128,24 @@ components:
         requestId: {type: string, example: 2acd6dc6dd75fe41}
 
   responses:
+    Unauthorized:
+      description: Authentication is required or the bearer token is invalid or expired.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+        application/xml:
+          schema: {$ref: '#/components/schemas/Error'}
+        application/yaml:
+          schema: {$ref: '#/components/schemas/Error'}
+    Forbidden:
+      description: The authenticated user does not have administrator privileges.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+        application/xml:
+          schema: {$ref: '#/components/schemas/Error'}
+        application/yaml:
+          schema: {$ref: '#/components/schemas/Error'}
     BadRequest:
       description: Invalid path id or query parameter (for example `limit=500`, `id=abc`, or a min greater than its max).
       content:
@@ -826,11 +1162,15 @@ components:
         application/yaml:
           schema: {$ref: '#/components/schemas/Error'}
     MalformedJson:
-      description: The request body is not valid JSON.
+      description: The request body is empty, malformed, or is not a JSON object, XML mapping, or YAML mapping.
       content:
         application/json:
           schema: {$ref: '#/components/schemas/Error'}
-          example: {status: 400, error: Bad Request, message: Request body is not valid JSON, requestId: e99d34ae60801193}
+          example: {status: 400, error: Bad Request, message: Request body contains invalid data, requestId: e99d34ae60801193}
+        application/xml:
+          schema: {$ref: '#/components/schemas/Error'}
+        application/yaml:
+          schema: {$ref: '#/components/schemas/Error'}
     NotFound:
       description: No resource with that id.
       content:
@@ -852,13 +1192,17 @@ components:
             message: 'This API can only return: application/json, application/xml, application/yaml'
             requestId: e947ab25947d13ee
     UnsupportedMediaType:
-      description: The request `Content-Type` is not `application/json`.
+      description: The request `Content-Type` is not one of the supported JSON, XML, or YAML media types.
       content:
         application/json:
           schema: {$ref: '#/components/schemas/Error'}
-          example: {status: 415, error: Unsupported Media Type, message: 'Request body must be sent as: application/json', requestId: 2e834f8bfe5df349}
+          example: {status: 415, error: Unsupported Media Type, message: 'Request Content-Type must be JSON, XML, or YAML.', requestId: 2e834f8bfe5df349}
+        application/xml:
+          schema: {$ref: '#/components/schemas/Error'}
+        application/yaml:
+          schema: {$ref: '#/components/schemas/Error'}
     ValidationFailed:
-      description: The body is valid JSON but some fields are not acceptable.
+      description: The body is a valid object or mapping, but some fields are not acceptable.
       content:
         application/json:
           schema: {$ref: '#/components/schemas/Error'}
@@ -882,8 +1226,16 @@ components:
             error: Conflict
             message: This artist still has artworks. Delete or reassign them first.
             requestId: 1d3b0f9c45ad044f
+        application/xml:
+          schema: {$ref: '#/components/schemas/Error'}
+        application/yaml:
+          schema: {$ref: '#/components/schemas/Error'}
     ServerError:
       description: Unexpected server error. Details are only in the server log, found with `requestId`.
       content:
         application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+        application/xml:
+          schema: {$ref: '#/components/schemas/Error'}
+        application/yaml:
           schema: {$ref: '#/components/schemas/Error'}

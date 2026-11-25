@@ -23,11 +23,18 @@ declare(strict_types=1);
  */
 
 return function (array $settings): array {
-    // Database credentials
-    $settings['db']['username'] = 'root';
-    $settings['db']['database'] = 'artgateway_db';
-    $settings['db']['password'] = '';
+    // Wampoon defaults support a local root account with no password.
+    // Set DB_* environment variables for other local or production configurations.
+    $settings['db']['host'] = getenv('DB_HOST') ?: 'localhost';
+    $settings['db']['port'] = getenv('DB_PORT') ?: '3306';
+    $settings['db']['username'] = getenv('DB_USERNAME') ?: 'root';
+    $settings['db']['database'] = getenv('DB_DATABASE') ?: 'artgateway_db';
+    $settings['db']['password'] = getenv('DB_PASSWORD') ?: '';
 
-    //TODO: Additional settings/configs can be declared here.
+    // Set JWT_SECRET in the server environment to a random value of at least 32 characters.
+    // Example generation: bin2hex(random_bytes(32))
+    $jwtSecret = getenv('JWT_SECRET');
+    $settings['jwt']['secret'] = $jwtSecret !== false ? $jwtSecret : ($_ENV['JWT_SECRET'] ?? '');
+
     return $settings;
 };

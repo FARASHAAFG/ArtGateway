@@ -55,12 +55,12 @@ class PDOService
             return;
         }
 
-        if (!isset($this->config['database'])) {
-            throw new Exception('Database name is required to be specified in the config/env.php file. If the config/env.php file is not found, please create it by copying the env.example.php file and renaming it to env.php.');
+        if (!isset($this->config['database']) || !is_string($this->config['database']) || trim($this->config['database']) === '') {
+            throw new Exception('Database name is required. Set DB_DATABASE or configure db.database in config/env.php.');
         }
 
-        if (!isset($this->config['username'])) {
-            throw new Exception('Username is required to be specified in the config/env.php file. If the config/env.php file is not found, please create it by copying the env.example.php file and renaming it to env.php.');
+        if (!isset($this->config['username']) || !is_string($this->config['username']) || trim($this->config['username']) === '') {
+            throw new Exception('Database username is required. Set DB_USERNAME or configure db.username in config/env.php.');
         }
 
         $host = $this->config['host'] ?? 'localhost';
@@ -69,6 +69,12 @@ class PDOService
         $password = $this->config['password'] ?? '';
         $database = $this->config['database'];
         $username = $this->config['username'];
+        if (!is_string($host) || trim($host) === '') {
+            throw new Exception('Database host is required. Set DB_HOST or configure db.host in config/env.php.');
+        }
+        if (filter_var($port, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 65535]]) === false) {
+            throw new Exception('Database port must be an integer between 1 and 65535. Set DB_PORT or configure db.port in config/env.php.');
+        }
 
         try {
             $dsn = sprintf(
@@ -78,7 +84,7 @@ class PDOService
                 $port,
                 $charset
             );
-            $this->db = new PDO($dsn, $username, $password, $this->config['options']);
+            $this->db = new PDO($dsn, $username, $password, $this->config['options'] ?? []);
         } catch (\PDOException $e) {
             $message = sprintf('Failed to connect to the database. Error: %s. Please make sure the database name, username, and password are correct in the config/env.php file. If the config/env.php file is not found, please create it by copying the env.example.php file and renaming it to env.php.', $e->getMessage());
             throw new \PDOException($message, (int)$e->getCode());

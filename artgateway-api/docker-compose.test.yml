@@ -1,0 +1,20 @@
+services:
+  test-db:
+    image: mariadb:11
+    ports:
+      - "127.0.0.1:3307:3306"
+    environment:
+      MARIADB_ROOT_PASSWORD: artgateway_root_test_password
+      MARIADB_DATABASE: artgateway_db
+      MARIADB_USER: artgateway_test
+      MARIADB_PASSWORD: artgateway_test_password
+    tmpfs:
+      - /var/lib/mysql
+    volumes:
+      - ./docker/test/00-test-environment.sql:/docker-entrypoint-initdb.d/00-test-environment.sql:ro
+      - ./data/sql/artgateway_db.sql:/docker-entrypoint-initdb.d/01-artgateway-schema.sql:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20

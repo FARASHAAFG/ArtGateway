@@ -54,8 +54,8 @@ class ArtistController extends BaseController
         $validator->string('name', false, 150);
         $validator->string('nationality', false, 100);
 
-        $validator->integer('birthYear_min');
-        $validator->integer('birthYear_max');
+        $validator->integer('birthYear_min', false, -3000, (int) date('Y'));
+        $validator->integer('birthYear_max', false, -3000, (int) date('Y'));
 
         // Return validation errors if any exist
         if ($validator->hasErrors()) {
@@ -175,7 +175,7 @@ class ArtistController extends BaseController
 
     public function handleGetArtistById(Request $request, Response $response, array $args): Response
     {
-        $id = (int) $args['id'];
+        $id = $this->positivePathId($args);
         $artist = $this->artistModel->getById($id);
 
         if (!$artist) {
@@ -187,16 +187,37 @@ class ArtistController extends BaseController
 
     public function handleGetArtworksByArtist(Request $request, Response $response, array $args): Response
     {
-        $id = (int) $args['id'];
-        $artworks = $this->artistModel->getArtworksByArtistId($id);
+        $id = $this->positivePathId($args);
+        $validator = new RequestValidator($request->getQueryParams());
+        $validator->integer('page', false, 1, 1000);
+        $validator->integer('limit', false, 1, 100);
 
-        return $this->renderJson($response, $artworks);
+        if ($validator->hasErrors()) {
+            throw new ApiException(400, 'Validation failed', $validator->getErrors());
+        }
+
+        $validated = $validator->getValidated();
+        if (!$this->artistModel->getById($id)) {
+            throw new ApiException(404, 'Artist not found');
+        }
+
+        $page = $validated['page'] ?? 1;
+        $limit = $validated['limit'] ?? 20;
+        $result = $this->buildPaginatedResult(
+            $request,
+            $this->artistModel->getArtworksByArtistId($id, $limit, ($page - 1) * $limit),
+            $page,
+            $limit,
+            $this->artistModel->countArtworksByArtistId($id)
+        );
+
+        return $this->renderResponse($request, $response, $result);
     }
 
     // POST /artists  ->  201 Created
     public function handleCreateArtist(Request $request, Response $response): Response
     {
-        $body = $this->getJsonBody($request);
+        $body = $this->getRequestBody($request);
 
         // Check the input (throws 422 if something is wrong)
         $data = $this->validateArtist($body);
@@ -213,13 +234,13 @@ class ArtistController extends BaseController
     // PUT /artists/{id}  ->  200 OK (replaces ALL the fields)
     public function handleUpdateArtist(Request $request, Response $response, array $args): Response
     {
-        $id = (int) $args['id'];
+        $id = $this->positivePathId($args);
 
         if (!$this->artistModel->getById($id)) {
             throw new ApiException(404, 'Artist not found');
         }
 
-        $body = $this->getJsonBody($request);
+        $body = $this->getRequestBody($request);
         $data = $this->validateArtist($body);
 
         $this->artistModel->updateById($id, $data);
@@ -230,15 +251,14 @@ class ArtistController extends BaseController
     // DELETE /artists/{id}  ->  204 No Content
     public function handleDeleteArtist(Request $request, Response $response, array $args): Response
     {
-        $id = (int) $args['id'];
+        $id = $this->positivePathId($args);
 
         if (!$this->artistModel->getById($id)) {
             throw new ApiException(404, 'Artist not found');
         }
 
         // An artist who still has artworks cannot be deleted (the artworks need an artist).
-        $artworks = $this->artistModel->getArtworksByArtistId($id);
-        if (count($artworks) > 0) {
+        if ($this->artistModel->countArtworksByArtistId($id) > 0) {
             throw new ApiException(409, 'This artist still has artworks. Delete or reassign them first.');
         }
 

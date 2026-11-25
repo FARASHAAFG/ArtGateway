@@ -14,7 +14,7 @@ return function (array $settings): array {
 
     // Database
     $settings['db']['database'] = 'artgateway_db';
-    $settings['db']['hostname'] = 'localhost';
+    $settings['db']['host'] = 'localhost';
     $settings['db']['port'] = '3306';
 
     return $settings;

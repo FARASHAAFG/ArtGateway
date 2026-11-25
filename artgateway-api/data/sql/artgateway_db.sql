@@ -11,6 +11,7 @@
 -- called 'artgateway_db' with utf8mb4_unicode_ci
 
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
+USE `artgateway_db`;
 START TRANSACTION;
 SET time_zone = "+00:00";
 
